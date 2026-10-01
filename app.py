@@ -28,6 +28,9 @@ Before doing any higher level editorial rewriting, you MUST check every target p
 IMPORTANT CONTEXT RULE:
 The paragraphs are part of one document, chapter or subject flow. Do not treat each paragraph as isolated. Use the supplied previous and following context to preserve continuity, sequence and links between paragraphs. Do not remove an explanation from one paragraph if it is needed to introduce, support or connect with the next paragraph. Judge repetition across the surrounding section, not only inside one paragraph.
 
+FULL PAGE MODE RULE:
+When the input is marked as full_page_mode, treat the whole supplied page as one connected piece of content. Correct and rewrite within the page as a whole. Preserve the internal paragraph order, paragraph breaks, headings, sequence and links between ideas. Do not split the page into separate paragraph reviews. Keep the page easy to read as one complete section.
+
 Rules:
 1. First correct spelling, grammar, punctuation and sentence construction in every target paragraph. This check is compulsory and must not be skipped because the paragraph is otherwise clear.
 2. Preserve every verified fact, figure, name, location, date, income figure, funding amount and programme term exactly as supplied.
@@ -220,7 +223,7 @@ def gemini_generate(model: str, payload: str, system_prompt: str = SYSTEM_PROMPT
     return text
 
 
-def review_paragraphs(paragraphs: List[str], model: str) -> List[Dict[str, Any]]:
+def review_paragraphs(paragraphs: List[str], model: str, full_page_mode: bool = False) -> List[Dict[str, Any]]:
     source_items = [{"id": i + 1, "text": p} for i, p in enumerate(paragraphs)]
     reviewed: Dict[int, Dict[str, Any]] = {}
 
@@ -235,8 +238,12 @@ def review_paragraphs(paragraphs: List[str], model: str) -> List[Dict[str, Any]]
             {"id": i + 1, "text": paragraphs[i]}
             for i in range(last_id, min(len(paragraphs), last_id + 3))
         ]
+        instruction = "Revise only target_paragraphs. First perform the compulsory spelling, grammar, punctuation and sentence construction check on every target paragraph. Then use context_before and context_after to preserve chapter or subject continuity."
+        if full_page_mode:
+            instruction = "This is FULL PAGE MODE. Treat the entire target text as one complete page. Correct spelling, grammar, punctuation, sentence construction, flow and consistency across the page as a whole. Preserve paragraph breaks, headings, sequence, place names, facts and approximate page length. Do not split the page into separate paragraph reviews."
         payload = json.dumps({
-            "instruction": "Revise only target_paragraphs. First perform the compulsory spelling, grammar, punctuation and sentence construction check on every target paragraph. Then use context_before and context_after to preserve chapter or subject continuity.",
+            "instruction": instruction,
+            "full_page_mode": full_page_mode,
             "context_before": context_before,
             "target_paragraphs": batch,
             "context_after": context_after,
@@ -351,22 +358,25 @@ def health():
 async def review(
     file: Optional[UploadFile] = File(None),
     text: str = Form(""),
+    page_mode: str = Form("false"),
     model: str = Form("gemini-3.1-flash-lite"),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
 
+    full_page_mode = str(page_mode).lower() == "true"
     typed_text = (text or "").strip()
     if typed_text:
         if len(typed_text) > 120000:
             raise HTTPException(status_code=400, detail="Pasted text is too long. Please review it in smaller sections.")
-        paragraphs = text_to_paragraphs(typed_text)
-        source_name = "Pasted Text"
+        paragraphs = [typed_text] if full_page_mode else text_to_paragraphs(typed_text)
+        source_name = "Pasted Page" if full_page_mode else "Pasted Text"
     elif file and file.filename:
         data = await file.read()
         if len(data) > 15 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="File is too large. Maximum size is 15 MB.")
-        paragraphs = extract_text(file.filename, data)
+        extracted = extract_text(file.filename, data)
+        paragraphs = ["\n\n".join(extracted)] if full_page_mode else extracted
         source_name = file.filename
     else:
         raise HTTPException(status_code=400, detail="Upload a document or paste/type text to review.")
@@ -374,12 +384,18 @@ async def review(
     if not paragraphs:
         raise HTTPException(status_code=400, detail="No readable text was found.")
     try:
-        results = review_paragraphs(paragraphs, model)
+        results = review_paragraphs(paragraphs, model, full_page_mode=full_page_mode)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Editorial review could not be completed: {exc}") from exc
-    return {"filename": source_name, "count": len(results), "items": results, "provider": "Gemini free tier"}
+    return {
+        "filename": source_name,
+        "count": len(results),
+        "items": results,
+        "provider": "Gemini free tier",
+        "review_type": "page" if full_page_mode else "paragraphs",
+    }
 
 
 @app.post("/refine")
