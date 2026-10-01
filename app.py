@@ -4,7 +4,7 @@ import re
 import json
 import difflib
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import httpx
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
@@ -88,6 +88,14 @@ def extract_text(filename: str, data: bytes) -> List[str]:
     raise HTTPException(status_code=400, detail="Supported files: DOCX, PDF, TXT and MD.")
 
 
+def text_to_paragraphs(text: str) -> List[str]:
+    text = (text or "").strip()
+    if not text:
+        return []
+    parts = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    return parts if parts else [text]
+
+
 def chunks(items: List[Dict[str, Any]], max_chars: int = 6000):
     batch, size = [], 0
     for item in items:
@@ -114,7 +122,6 @@ def extract_json(text: str) -> Dict[str, Any]:
     decoder = json.JSONDecoder()
     objects = []
     pos = 0
-
     while pos < len(text):
         while pos < len(text) and text[pos] in " \t\r\n,;":
             pos += 1
@@ -131,17 +138,14 @@ def extract_json(text: str) -> Dict[str, Any]:
             pos = end
         except json.JSONDecodeError:
             pos += 1
-
     if not objects:
         raise ValueError("Gemini did not return readable JSON. Please try again.")
-
     merged_items = []
     for obj in objects:
         if isinstance(obj, dict) and isinstance(obj.get("items"), list):
             merged_items.extend(obj["items"])
         elif isinstance(obj, list):
             merged_items.extend(x for x in obj if isinstance(x, dict))
-
     if merged_items:
         return {"items": merged_items}
     if isinstance(objects[0], dict):
@@ -155,18 +159,13 @@ def gemini_generate(model: str, payload: str) -> str:
     body = {
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": payload}]}],
-        "generationConfig": {
-            "temperature": 0.1,
-            "responseMimeType": "application/json",
-            "maxOutputTokens": 32768,
-        },
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json", "maxOutputTokens": 32768},
     }
     try:
         with httpx.Client(timeout=150.0) as client:
             response = client.post(url, headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=body)
     except httpx.HTTPError as exc:
         raise RuntimeError(f"Could not reach Gemini API: {exc}") from exc
-
     if response.status_code >= 400:
         try:
             err = response.json().get("error", {})
@@ -178,7 +177,6 @@ def gemini_generate(model: str, payload: str) -> str:
         if response.status_code in {401, 403}:
             raise RuntimeError("Gemini API key is invalid or does not have access to this model.")
         raise RuntimeError(f"Gemini API error {response.status_code}: {message}")
-
     data = response.json()
     candidates = data.get("candidates") or []
     if not candidates:
@@ -193,11 +191,9 @@ def gemini_generate(model: str, payload: str) -> str:
 def review_paragraphs(paragraphs: List[str], model: str) -> List[Dict[str, Any]]:
     source_items = [{"id": i + 1, "text": p} for i, p in enumerate(paragraphs)]
     reviewed: Dict[int, Dict[str, Any]] = {}
-
     for batch in chunks(source_items):
         payload = json.dumps({"paragraphs": batch}, ensure_ascii=False)
-        text = gemini_generate(model, payload)
-        data = extract_json(text)
+        data = extract_json(gemini_generate(model, payload))
         for item in data.get("items", []):
             if not isinstance(item, dict):
                 continue
@@ -217,17 +213,7 @@ def review_paragraphs(paragraphs: List[str], model: str) -> List[Dict[str, Any]]
                 "reason": str(item.get("reason", "")).strip(),
                 "flags": [str(flag) for flag in flags],
             }
-
-    result = []
-    for i, original in enumerate(paragraphs, start=1):
-        result.append(reviewed.get(i, {
-            "id": i,
-            "original": original,
-            "revised": original,
-            "reason": "No change returned by the model.",
-            "flags": ["Please review manually because no model revision was returned."],
-        }))
-    return result
+    return [reviewed.get(i, {"id": i, "original": original, "revised": original, "reason": "No change returned by the model.", "flags": ["Please review manually because no model revision was returned."]}) for i, original in enumerate(paragraphs, start=1)]
 
 
 def add_diff_paragraph(doc: Document, original: str, revised: str):
@@ -307,35 +293,51 @@ def health():
 
 
 @app.post("/review")
-async def review(file: UploadFile = File(...), model: str = Form("gemini-3.1-flash-lite")):
+async def review(
+    file: Optional[UploadFile] = File(None),
+    text: str = Form(""),
+    model: str = Form("gemini-3.1-flash-lite"),
+):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
-    data = await file.read()
-    if len(data) > 15 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File is too large. Maximum size is 15 MB.")
-    paragraphs = extract_text(file.filename or "document", data)
+
+    typed_text = (text or "").strip()
+    if typed_text:
+        if len(typed_text) > 120000:
+            raise HTTPException(status_code=400, detail="Pasted text is too long. Please review it in smaller sections.")
+        paragraphs = text_to_paragraphs(typed_text)
+        source_name = "Pasted Text"
+    elif file and file.filename:
+        data = await file.read()
+        if len(data) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File is too large. Maximum size is 15 MB.")
+        paragraphs = extract_text(file.filename, data)
+        source_name = file.filename
+    else:
+        raise HTTPException(status_code=400, detail="Upload a document or paste/type text to review.")
+
     if not paragraphs:
-        raise HTTPException(status_code=400, detail="No readable text was found in the file.")
+        raise HTTPException(status_code=400, detail="No readable text was found.")
     try:
         results = review_paragraphs(paragraphs, model)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Editorial review could not be completed: {exc}") from exc
-    return {"filename": file.filename, "count": len(results), "items": results, "provider": "Gemini free tier"}
+    return {"filename": source_name, "count": len(results), "items": results, "provider": "Gemini free tier"}
 
 
 @app.post("/download/reviewed")
 async def download_reviewed(payload: str = Form(...), filename: str = Form("document.docx")):
     results = json.loads(payload)
     data = build_review_doc(results, filename)
-    stem = Path(filename).stem
+    stem = Path(filename).stem if filename else "pasted_text"
     return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{stem}_editorial_review.docx"'})
 
 
 @app.post("/download/clean")
 async def download_clean(payload: str = Form(...), filename: str = Form("document.docx")):
     results = json.loads(payload)
-    data = build_clean_doc(results, f"{Path(filename).stem} Revised Copy")
-    stem = Path(filename).stem
+    stem = Path(filename).stem if filename else "pasted_text"
+    data = build_clean_doc(results, f"{stem} Revised Copy")
     return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{stem}_clean_revised.docx"'})
