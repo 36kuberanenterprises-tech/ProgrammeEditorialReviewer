@@ -20,8 +20,7 @@ app = FastAPI(title="Programme Editorial Reviewer")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 SYSTEM_PROMPT = r"""
-You are a senior Indian NGO, CSR and development sector editor.
-Your task is not basic grammar correction. Review the supplied programme text as an institutional editor.
+You are a senior Indian NGO, CSR and development sector editor. This is not basic grammar correction. Review the supplied programme text as an institutional editor.
 
 Rules:
 1. Preserve every verified fact, figure, name, location, date, income figure, funding amount and programme term exactly as supplied.
@@ -35,12 +34,13 @@ Rules:
 9. If a beneficiary already had a skill, say the programme strengthened, improved or commercialised it. Do not claim the programme created the skill.
 10. Maintain consistent terminology, headings, abbreviations, trade names, programme names and location presentation.
 11. Identify unsupported causal claims and mark them for confirmation.
-12. Do not use hyphens, en dashes or em dashes in newly written prose. Rewrite sentences to avoid them.
+12. Do not use hyphens, en dashes or em dashes in newly written prose.
 13. Keep the revised paragraph close to the source in meaning and length unless repetition requires shortening.
 14. Do not silently correct factual conflicts. Flag them.
 15. Do not add new facts from general knowledge. Work only from the supplied text.
+16. Return exactly one JSON object. Do not return more than one JSON object. Do not add commentary before or after the JSON.
 
-Return ONLY valid JSON in this exact shape:
+Return this shape only:
 {
   "items": [
     {
@@ -63,10 +63,7 @@ ALLOWED_MODELS = {
 def get_gemini_key() -> str:
     key = os.getenv("GEMINI_API_KEY")
     if not key:
-        raise HTTPException(
-            status_code=500,
-            detail="GEMINI_API_KEY is not configured on the server. Create a free Gemini API key in Google AI Studio and add it to Render Environment.",
-        )
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured on the server. Create a free Gemini API key in Google AI Studio and add it to Render Environment.")
     return key
 
 
@@ -91,7 +88,7 @@ def extract_text(filename: str, data: bytes) -> List[str]:
     raise HTTPException(status_code=400, detail="Supported files: DOCX, PDF, TXT and MD.")
 
 
-def chunks(items: List[Dict[str, Any]], max_chars: int = 10000):
+def chunks(items: List[Dict[str, Any]], max_chars: int = 6000):
     batch, size = [], 0
     for item in items:
         s = len(item["text"])
@@ -104,18 +101,52 @@ def chunks(items: List[Dict[str, Any]], max_chars: int = 10000):
         yield batch
 
 
-def extract_json(text: str) -> Dict[str, Any]:
+def _strip_fences(text: str) -> str:
     text = text.strip()
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        m = re.search(r"\{.*\}", text, flags=re.S)
-        if not m:
-            raise ValueError("Model did not return valid JSON")
-        return json.loads(m.group(0))
+    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
+
+def extract_json(text: str) -> Dict[str, Any]:
+    """Tolerates Gemini occasionally returning valid JSON followed by extra JSON/text."""
+    text = _strip_fences(text)
+    decoder = json.JSONDecoder()
+    objects = []
+    pos = 0
+
+    while pos < len(text):
+        while pos < len(text) and text[pos] in " \t\r\n,;":
+            pos += 1
+        if pos >= len(text):
+            break
+        if text[pos] not in "[{":
+            nxt = min([x for x in (text.find("{", pos), text.find("[", pos)) if x != -1], default=-1)
+            if nxt == -1:
+                break
+            pos = nxt
+        try:
+            obj, end = decoder.raw_decode(text, pos)
+            objects.append(obj)
+            pos = end
+        except json.JSONDecodeError:
+            pos += 1
+
+    if not objects:
+        raise ValueError("Gemini did not return readable JSON. Please try again.")
+
+    merged_items = []
+    for obj in objects:
+        if isinstance(obj, dict) and isinstance(obj.get("items"), list):
+            merged_items.extend(obj["items"])
+        elif isinstance(obj, list):
+            merged_items.extend(x for x in obj if isinstance(x, dict))
+
+    if merged_items:
+        return {"items": merged_items}
+    if isinstance(objects[0], dict):
+        return objects[0]
+    raise ValueError("Gemini JSON did not contain an items list.")
 
 
 def gemini_generate(model: str, payload: str) -> str:
@@ -125,18 +156,14 @@ def gemini_generate(model: str, payload: str) -> str:
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": payload}]}],
         "generationConfig": {
-            "temperature": 0.2,
+            "temperature": 0.1,
             "responseMimeType": "application/json",
             "maxOutputTokens": 32768,
         },
     }
     try:
-        with httpx.Client(timeout=120.0) as client:
-            response = client.post(
-                url,
-                headers={"x-goog-api-key": key, "Content-Type": "application/json"},
-                json=body,
-            )
+        with httpx.Client(timeout=150.0) as client:
+            response = client.post(url, headers={"x-goog-api-key": key, "Content-Type": "application/json"}, json=body)
     except httpx.HTTPError as exc:
         raise RuntimeError(f"Could not reach Gemini API: {exc}") from exc
 
@@ -155,8 +182,7 @@ def gemini_generate(model: str, payload: str) -> str:
     data = response.json()
     candidates = data.get("candidates") or []
     if not candidates:
-        feedback = data.get("promptFeedback") or {}
-        raise RuntimeError(f"Gemini returned no editorial response. {feedback}")
+        raise RuntimeError(f"Gemini returned no editorial response. {data.get('promptFeedback') or {}}")
     parts = candidates[0].get("content", {}).get("parts", [])
     text = "".join(str(part.get("text", "")) for part in parts if part.get("text"))
     if not text.strip():
@@ -173,8 +199,10 @@ def review_paragraphs(paragraphs: List[str], model: str) -> List[Dict[str, Any]]
         text = gemini_generate(model, payload)
         data = extract_json(text)
         for item in data.get("items", []):
+            if not isinstance(item, dict):
+                continue
             try:
-                idx = int(item["id"])
+                idx = int(item.get("id"))
             except Exception:
                 continue
             if idx < 1 or idx > len(paragraphs):
@@ -240,7 +268,6 @@ def build_review_doc(results: List[Dict[str, Any]], title: str) -> bytes:
     r = legend.add_run("Blue text")
     r.font.color.rgb = RGBColor(0, 102, 204)
     legend.add_run(" means addition or replacement.")
-
     for item in results:
         doc.add_heading(f"Paragraph {item['id']}", level=2)
         add_diff_paragraph(doc, item["original"], item["revised"])
@@ -254,7 +281,6 @@ def build_review_doc(results: List[Dict[str, Any]], title: str) -> bytes:
             rr.bold = True
             rr.font.color.rgb = RGBColor(192, 0, 0)
             p.add_run(str(flag))
-
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
@@ -277,11 +303,7 @@ def home(request: Request):
 
 @app.get("/health")
 def health():
-    return {
-        "status": "ok",
-        "provider": "gemini",
-        "gemini_key_configured": bool(os.getenv("GEMINI_API_KEY")),
-    }
+    return {"status": "ok", "provider": "gemini", "gemini_key_configured": bool(os.getenv("GEMINI_API_KEY"))}
 
 
 @app.post("/review")
@@ -308,11 +330,7 @@ async def download_reviewed(payload: str = Form(...), filename: str = Form("docu
     results = json.loads(payload)
     data = build_review_doc(results, filename)
     stem = Path(filename).stem
-    return StreamingResponse(
-        io.BytesIO(data),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{stem}_editorial_review.docx"'},
-    )
+    return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{stem}_editorial_review.docx"'})
 
 
 @app.post("/download/clean")
@@ -320,8 +338,4 @@ async def download_clean(payload: str = Form(...), filename: str = Form("documen
     results = json.loads(payload)
     data = build_clean_doc(results, f"{Path(filename).stem} Revised Copy")
     stem = Path(filename).stem
-    return StreamingResponse(
-        io.BytesIO(data),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{stem}_clean_revised.docx"'},
-    )
+    return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{stem}_clean_revised.docx"'})
