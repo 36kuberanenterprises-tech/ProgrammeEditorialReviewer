@@ -26,7 +26,7 @@ Rules:
 1. Preserve every verified fact, figure, name, location, date, income figure, funding amount and programme term exactly as supplied.
 2. Never invent achievements, referrals, customer growth, confidence, demand, family support, impact, partnerships or outcomes.
 3. If a claim needs verification or the source is unclear, do not guess. Flag it for confirmation.
-4. Remove repetition and duplicate meaning.
+4. Remove repetition only where the meaning is genuinely repeated. Do not remove necessary context just to make the paragraph shorter.
 5. Rebuild awkward sentences naturally instead of replacing words one by one.
 6. Use professional, natural Indian English suitable for CSR reports, coffee table books, annual reports and donor publications.
 7. Avoid exaggerated, promotional, dramatic or template style conclusions.
@@ -35,7 +35,7 @@ Rules:
 10. Maintain consistent terminology, headings, abbreviations, trade names, programme names and location presentation.
 11. Identify unsupported causal claims and mark them for confirmation.
 12. Do not use hyphens, en dashes or em dashes in newly written prose.
-13. Keep the revised paragraph close to the source in meaning and length unless repetition requires shortening.
+13. For designed publications, keep the revised paragraph close to the original character count and overall length. Do not substantially shorten unless there is clear duplication or unsupported content.
 14. Do not silently correct factual conflicts. Flag them.
 15. Do not add new facts from general knowledge. Work only from the supplied text.
 16. Return exactly one JSON object. Do not return more than one JSON object. Do not add commentary before or after the JSON.
@@ -52,6 +52,27 @@ Return this shape only:
   ]
 }
 The id must match the paragraph id supplied by the user.
+"""
+
+REFINE_PROMPT = r"""
+You are revising one paragraph after the user has responded to an editorial confirmation question.
+Use only the original paragraph, the current revision, the confirmation question and the user's response.
+
+Interpret the user's response as follows:
+1. YES means the flagged statement is confirmed and may be retained naturally.
+2. NO means the flagged statement is not confirmed. Remove it or rewrite the paragraph so it does not make that unsupported claim.
+3. COMMENT means use the user's written clarification as the verified basis for the rewrite.
+4. Preserve all other verified facts, figures, names and locations exactly.
+5. Keep the revised paragraph close to the original character count and overall length, especially for designed Coffee Table Book pages.
+6. Do not add facts that are not in the original paragraph or the user's clarification.
+7. Do not use hyphens, en dashes or em dashes in newly written prose.
+8. Return exactly one JSON object with this shape only:
+{
+  "revised": "final revised paragraph",
+  "reason": "short note explaining how the user's response was applied",
+  "flags": []
+}
+If another genuinely unresolved factual issue remains, include it in flags. Otherwise return an empty flags list.
 """
 
 ALLOWED_MODELS = {
@@ -117,7 +138,6 @@ def _strip_fences(text: str) -> str:
 
 
 def extract_json(text: str) -> Dict[str, Any]:
-    """Tolerates Gemini occasionally returning valid JSON followed by extra JSON/text."""
     text = _strip_fences(text)
     decoder = json.JSONDecoder()
     objects = []
@@ -150,14 +170,14 @@ def extract_json(text: str) -> Dict[str, Any]:
         return {"items": merged_items}
     if isinstance(objects[0], dict):
         return objects[0]
-    raise ValueError("Gemini JSON did not contain an items list.")
+    raise ValueError("Gemini JSON did not contain the expected object.")
 
 
-def gemini_generate(model: str, payload: str) -> str:
+def gemini_generate(model: str, payload: str, system_prompt: str = SYSTEM_PROMPT) -> str:
     key = get_gemini_key()
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     body = {
-        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "systemInstruction": {"parts": [{"text": system_prompt}]},
         "contents": [{"role": "user", "parts": [{"text": payload}]}],
         "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json", "maxOutputTokens": 32768},
     }
@@ -325,6 +345,52 @@ async def review(
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Editorial review could not be completed: {exc}") from exc
     return {"filename": source_name, "count": len(results), "items": results, "provider": "Gemini free tier"}
+
+
+@app.post("/refine")
+async def refine(
+    paragraph_id: int = Form(...),
+    original: str = Form(...),
+    revised: str = Form(...),
+    flag: str = Form(""),
+    decision: str = Form(...),
+    comment: str = Form(""),
+    model: str = Form("gemini-3.1-flash-lite"),
+):
+    if model not in ALLOWED_MODELS:
+        raise HTTPException(status_code=400, detail="Unsupported model selection.")
+    decision = decision.strip().upper()
+    if decision not in {"YES", "NO", "COMMENT"}:
+        raise HTTPException(status_code=400, detail="Decision must be YES, NO or COMMENT.")
+    if decision == "COMMENT" and not comment.strip():
+        raise HTTPException(status_code=400, detail="Please write your clarification before rewriting.")
+
+    payload = json.dumps({
+        "paragraph_id": paragraph_id,
+        "original": original,
+        "current_revision": revised,
+        "confirmation_question": flag,
+        "user_response_type": decision,
+        "user_comment": comment.strip(),
+        "original_character_count": len(original),
+    }, ensure_ascii=False)
+    try:
+        data = extract_json(gemini_generate(model, payload, REFINE_PROMPT))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Paragraph rewrite could not be completed: {exc}") from exc
+
+    flags = data.get("flags", []) or []
+    if not isinstance(flags, list):
+        flags = [str(flags)]
+    return {
+        "id": paragraph_id,
+        "original": original,
+        "revised": str(data.get("revised", revised)).strip(),
+        "reason": str(data.get("reason", "Updated based on your confirmation.")).strip(),
+        "flags": [str(x) for x in flags],
+    }
 
 
 @app.post("/download/reviewed")
