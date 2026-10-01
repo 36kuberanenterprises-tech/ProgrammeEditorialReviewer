@@ -46,8 +46,8 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
     <div class="note">The reviewer now keeps nearby paragraphs as context, protects relevant place names from any state or country, and aims to keep revised text within about 92 to 108 percent of the original length for designed pages. If the app asks you to confirm something, choose Yes, No, or write a clarification.</div>
     <div id="status" class="status"></div>
     <div id="actions" class="actions">
-      <button class="secondary" onclick="downloadDoc('reviewed')">Download marked review</button>
-      <button onclick="downloadDoc('clean')">Download clean revised copy</button>
+      <button id="downloadReviewed" class="secondary" onclick="downloadDoc('reviewed',this)">Download marked review</button>
+      <button id="downloadClean" onclick="downloadDoc('clean',this)">Download clean revised copy</button>
     </div>
     <div id="results"></div>
   </div>
@@ -102,8 +102,47 @@ async function refineParagraph(id,decision){
   try{const r=await fetch('/refine',{method:'POST',body:fd}); const data=await r.json(); if(!r.ok)throw new Error(data.detail||'Rewrite failed'); currentItems[idx]=data; renderResults(); status(`Paragraph ${id} updated based on your response and chapter context.`);}catch(err){s.textContent=err.message;}
 }
 
-async function downloadDoc(kind){
-  const fd=new FormData(); fd.append('payload',JSON.stringify(currentItems)); fd.append('filename',currentFilename); const r=await fetch('/download/'+kind,{method:'POST',body:fd}); if(!r.ok){status('Download generation failed.',true);return;} const blob=await r.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='editorial_'+kind+'.docx'; a.click(); URL.revokeObjectURL(url);
+function downloadFilenameFromHeader(response, fallback){
+  const cd=response.headers.get('content-disposition')||'';
+  const match=cd.match(/filename="?([^";]+)"?/i);
+  return match&&match[1]?match[1]:fallback;
+}
+
+async function downloadDoc(kind,button){
+  if(!currentItems || currentItems.length===0){status('There is no reviewed content to download yet.',true);return;}
+  const btn=button || (kind==='reviewed'?document.getElementById('downloadReviewed'):document.getElementById('downloadClean'));
+  const oldText=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent=kind==='reviewed'?'Preparing marked Word file...':'Preparing clean Word file...';}
+  status(kind==='reviewed'?'Preparing the marked Word review. Large documents can take a little time...':'Preparing the clean revised Word file...');
+  try{
+    const fd=new FormData();
+    fd.append('payload',JSON.stringify(currentItems));
+    fd.append('filename',currentFilename||'document.docx');
+    const r=await fetch('/download/'+kind,{method:'POST',body:fd});
+    if(!r.ok){
+      let message='Download generation failed.';
+      try{const data=await r.json(); message=data.detail||message;}catch(_){try{message=(await r.text())||message;}catch(__){}}
+      throw new Error(message);
+    }
+    const blob=await r.blob();
+    if(!blob || blob.size===0)throw new Error('The server created an empty file. Please try again.');
+    const fallback=(currentFilename||'document.docx').replace(/\.docx$/i,'')+(kind==='reviewed'?'_editorial_review.docx':'_clean_revised.docx');
+    const filename=downloadFilenameFromHeader(r,fallback);
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=filename;
+    a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    status(`Download started: ${filename}`);
+  }catch(err){
+    status(err.message||'Download generation failed.',true);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent=oldText;}
+  }
 }
 </script>
 </body>
