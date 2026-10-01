@@ -5,18 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Programme Editorial Reviewer</title>
 <style>
-:root { --bg:#f5f7fb; --card:#fff; --ink:#172033; --muted:#667085; --line:#e4e7ec; --accent:#174ea6; --danger:#b42318; --blue:#0665c9; }
-*{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+:root{--bg:#f5f7fb;--card:#fff;--ink:#172033;--muted:#667085;--line:#e4e7ec;--accent:#174ea6;--danger:#b42318;--blue:#0665c9}
+*{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
 .wrap{max-width:1100px;margin:38px auto;padding:0 18px}.hero{margin-bottom:22px}.hero h1{font-size:32px;margin:0 0 8px}.hero p{color:var(--muted);margin:0;line-height:1.55}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 8px 28px rgba(16,24,40,.05)}
 .modebar{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}.modebtn{background:#eef2f8;color:#344054;border:1px solid #d0d5dd}.modebtn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 form.row{display:grid;grid-template-columns:1fr 240px 160px;gap:12px;align-items:end}.field label{display:block;font-weight:700;margin-bottom:7px}.field input,.field select,textarea{width:100%;padding:12px;border:1px solid #cfd4dc;border-radius:10px;background:#fff;font:inherit}textarea{min-height:210px;resize:vertical;line-height:1.55}
-.textwrap{display:none;margin-bottom:16px}.textmeta{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:12px;color:var(--muted)}
-button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);color:white;font-weight:700;cursor:pointer}button.secondary{background:#344054}button.soft{background:#eef2f8;color:#344054;border:1px solid #d0d5dd}button.yes{background:#067647}button.no{background:#b42318}button:disabled{opacity:.55;cursor:not-allowed}
+.textwrap,.pagewrap{display:none;margin-bottom:16px}.textmeta{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:12px;color:var(--muted)}
+button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);color:#fff;font-weight:700;cursor:pointer}button.secondary{background:#344054}button.soft{background:#eef2f8;color:#344054;border:1px solid #d0d5dd}button.yes{background:#067647}button.no{background:#b42318}button:disabled{opacity:.55;cursor:not-allowed}
 .note{margin-top:12px;color:var(--muted);font-size:13px}.status{margin:18px 0;padding:12px 14px;border-radius:10px;background:#eef4ff;display:none}.status.error{background:#fff1f0;color:var(--danger)}
-.actions{display:none;gap:10px;margin:18px 0}.item{border-top:1px solid var(--line);padding:22px 0}.item:first-child{border-top:0}.meta{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px}.reason{font-size:14px;color:var(--muted);margin:8px 0}.flag{margin-top:8px;padding:11px 12px;background:#fff4ed;color:#9a3412;border-radius:8px;font-size:14px}.revised{padding:13px;border:1px solid var(--line);border-radius:10px;line-height:1.6;background:#f8fbff;margin-top:8px}.label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:5px}.diff-del{color:#b42318;text-decoration:line-through}.diff-add{color:#0665c9;font-weight:600}
+.actions{display:none;gap:10px;margin:18px 0}.item{border-top:1px solid var(--line);padding:22px 0}.item:first-child{border-top:0}.meta{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px}.reason{font-size:14px;color:var(--muted);margin:8px 0}.flag{margin-top:8px;padding:11px 12px;background:#fff4ed;color:#9a3412;border-radius:8px;font-size:14px}.revised{padding:13px;border:1px solid var(--line);border-radius:10px;line-height:1.65;background:#f8fbff;margin-top:8px}.pageclean{white-space:pre-wrap;background:#fff}.label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin:12px 0 5px}.diff-del{color:#b42318;text-decoration:line-through}.diff-add{color:#0665c9;font-weight:600}
 .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.badge{display:inline-block;background:#ecfdf3;color:#027a48;border:1px solid #abefc6;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700}.badge.info{background:#eef4ff;color:#174ea6;border-color:#c7d7fe}
-.feedback{margin-top:10px;padding:12px;border:1px solid #fed7aa;background:#fffaf5;border-radius:10px}.feedback-title{font-weight:700;color:#7c2d12;margin-bottom:8px}.feedback-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.feedback textarea{min-height:84px}.rewrite-status{font-size:13px;color:var(--muted);margin-top:8px}.charline{font-size:12px;color:var(--muted);margin-top:6px}.charwarn{color:#b54708;font-weight:700}
+.feedback{margin-top:10px;padding:12px;border:1px solid #fed7aa;background:#fffaf5;border-radius:10px}.feedback-title{font-weight:700;color:#7c2d12;margin-bottom:8px}.feedback-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.feedback textarea{min-height:84px}.rewrite-status{font-size:13px;color:var(--muted);margin-top:8px}.charline{font-size:12px;color:var(--muted);margin-top:6px}.charwarn{color:#b54708;font-weight:700}.pagehelp{padding:11px 12px;background:#f8fafc;border:1px solid var(--line);border-radius:10px;margin-bottom:12px;color:#475467;font-size:14px;line-height:1.5}
 @media(max-width:760px){form.row{grid-template-columns:1fr}.hero h1{font-size:27px}.actions{flex-direction:column}.textmeta{flex-direction:column}}
 </style>
 </head>
@@ -24,13 +24,14 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
 <div class="wrap">
   <div class="hero">
     <h1>Programme Editorial Reviewer</h1>
-    <p>Review a full document or paste a single paragraph for quick correction. The app checks language, continuity, repetition, factual caution, programme logic and editorial consistency without inventing missing impact.</p>
-    <div class="badges"><span class="badge">Free AI mode</span><span class="badge info">Chapter context on</span><span class="badge info">Place names protected</span><span class="badge info">Strict layout length</span></div>
+    <p>Review a full document, one paragraph, or one complete page. The app checks grammar, spelling, punctuation, flow, continuity, factual caution and editorial consistency without inventing missing impact.</p>
+    <div class="badges"><span class="badge">Free AI mode</span><span class="badge info">Grammar and spelling check</span><span class="badge info">Chapter context on</span><span class="badge info">Place names protected</span><span class="badge info">Strict layout length</span></div>
   </div>
   <div class="card">
     <div class="modebar">
       <button type="button" id="fileMode" class="modebtn active">Upload document</button>
-      <button type="button" id="textMode" class="modebtn">Type or paste text</button>
+      <button type="button" id="textMode" class="modebtn">Type or paste paragraph</button>
+      <button type="button" id="pageMode" class="modebtn">Review one full page</button>
     </div>
 
     <div id="textWrap" class="textwrap">
@@ -38,12 +39,18 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
       <div class="textmeta"><span>For paragraph wise checking, paste only the paragraph you want to review.</span><span id="charCount">0 characters</span></div>
     </div>
 
+    <div id="pageWrap" class="pagewrap">
+      <div class="pagehelp"><strong>Full page review:</strong> Upload a one page DOCX, PDF, TXT or MD file below, or paste the full page here. The app will correct the page as one connected section instead of showing separate paragraph corrections.</div>
+      <div class="field"><label>Paste full page content, optional if you upload a file</label><textarea id="pageInput" placeholder="Paste the complete page here. Keep the paragraph breaks as they appear on the page..."></textarea></div>
+      <div class="textmeta"><span>The complete page will be reviewed together.</span><span id="pageCharCount">0 characters</span></div>
+    </div>
+
     <form id="reviewForm" class="row">
-      <div class="field" id="fileField"><label>Document</label><input id="file" type="file" accept=".docx,.pdf,.txt,.md"></div>
+      <div class="field" id="fileField"><label id="fileLabel">Document</label><input id="file" type="file" accept=".docx,.pdf,.txt,.md"></div>
       <div class="field"><label>Model</label><select id="model"><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite Free</option><option value="gemini-3.8-flash">Gemini 3.8 Flash Free</option></select></div>
       <button id="go" type="submit">Review</button>
     </form>
-    <div class="note">The reviewer now keeps nearby paragraphs as context, protects relevant place names from any state or country, and aims to keep revised text within about 92 to 108 percent of the original length for designed pages. If the app asks you to confirm something, choose Yes, No, or write a clarification.</div>
+    <div class="note">For designed pages, the reviewer aims to keep revised text within about 92 to 108 percent of the original length. If the app asks you to confirm something, choose Yes, No, or write a clarification.</div>
     <div id="status" class="status"></div>
     <div id="actions" class="actions">
       <button id="downloadReviewed" class="secondary" onclick="downloadDoc('reviewed',this)">Download marked review</button>
@@ -53,97 +60,46 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
   </div>
 </div>
 <script>
-let currentItems = []; let currentFilename = 'document.docx'; let mode='file';
-const statusBox = document.getElementById('status');
-const fileMode=document.getElementById('fileMode'), textMode=document.getElementById('textMode');
-const fileField=document.getElementById('fileField'), textWrap=document.getElementById('textWrap'), textInput=document.getElementById('textInput');
-function status(msg, err=false){statusBox.style.display='block';statusBox.className='status'+(err?' error':'');statusBox.textContent=msg;}
-function esc(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-function setMode(next){mode=next; const isText=mode==='text'; textWrap.style.display=isText?'block':'none'; fileField.style.display=isText?'none':'block'; fileMode.classList.toggle('active',!isText); textMode.classList.toggle('active',isText); statusBox.style.display='none';}
-fileMode.onclick=()=>setMode('file'); textMode.onclick=()=>setMode('text');
+let currentItems=[];let currentFilename='document.docx';let mode='file';let currentReviewType='paragraphs';
+const statusBox=document.getElementById('status');
+const fileMode=document.getElementById('fileMode'),textMode=document.getElementById('textMode'),pageMode=document.getElementById('pageMode');
+const fileField=document.getElementById('fileField'),fileLabel=document.getElementById('fileLabel'),textWrap=document.getElementById('textWrap'),pageWrap=document.getElementById('pageWrap'),textInput=document.getElementById('textInput'),pageInput=document.getElementById('pageInput');
+function status(msg,err=false){statusBox.style.display='block';statusBox.className='status'+(err?' error':'');statusBox.textContent=msg}
+function esc(s){return(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function setMode(next){
+  mode=next;const isText=mode==='text',isPage=mode==='page';
+  textWrap.style.display=isText?'block':'none';pageWrap.style.display=isPage?'block':'none';fileField.style.display=isText?'none':'block';
+  fileLabel.textContent=isPage?'One page file, optional if pasted above':'Document';
+  fileMode.classList.toggle('active',mode==='file');textMode.classList.toggle('active',isText);pageMode.classList.toggle('active',isPage);statusBox.style.display='none';
+}
+fileMode.onclick=()=>setMode('file');textMode.onclick=()=>setMode('text');pageMode.onclick=()=>setMode('page');
 textInput.addEventListener('input',()=>document.getElementById('charCount').textContent=textInput.value.length+' characters');
-function diffWords(a,b){
-  const A=a.split(/\s+/), B=b.split(/\s+/); const n=A.length,m=B.length;
-  const dp=Array.from({length:n+1},()=>Array(m+1).fill(0));
-  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
-  let i=0,j=0,out=[]; while(i<n&&j<m){if(A[i]===B[j]){out.push(esc(A[i]));i++;j++;}else if(dp[i+1][j]>=dp[i][j+1]){out.push('<span class="diff-del">'+esc(A[i])+'</span>');i++;}else{out.push('<span class="diff-add">'+esc(B[j])+'</span>');j++;}}
-  while(i<n)out.push('<span class="diff-del">'+esc(A[i++])+'</span>'); while(j<m)out.push('<span class="diff-add">'+esc(B[j++])+'</span>'); return out.join(' ');
-}
+pageInput.addEventListener('input',()=>document.getElementById('pageCharCount').textContent=pageInput.value.length+' characters');
+function diffWords(a,b){const A=a.split(/\s+/),B=b.split(/\s+/),n=A.length,m=B.length;const dp=Array.from({length:n+1},()=>Array(m+1).fill(0));for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);let i=0,j=0,out=[];while(i<n&&j<m){if(A[i]===B[j]){out.push(esc(A[i]));i++;j++}else if(dp[i+1][j]>=dp[i][j+1]){out.push('<span class="diff-del">'+esc(A[i])+'</span>');i++}else{out.push('<span class="diff-add">'+esc(B[j])+'</span>');j++}}while(i<n)out.push('<span class="diff-del">'+esc(A[i++])+'</span>');while(j<m)out.push('<span class="diff-add">'+esc(B[j++])+'</span>');return out.join(' ')}
 function itemHtml(x){
-  const flag=x.flags&&x.flags.length?x.flags[0]:'';
-  const ratio=x.original.length?x.revised.length/x.original.length:1;
-  const warn=(ratio<0.92||ratio>1.08)?' charwarn':'';
-  const feedback=flag?`<div class="feedback"><div class="feedback-title">Your response to this confirmation</div><div class="feedback-actions"><button type="button" class="yes" onclick="refineParagraph(${x.id},'YES')">Yes, this is correct</button><button type="button" class="no" onclick="refineParagraph(${x.id},'NO')">No, this is not correct</button></div><textarea id="comment-${x.id}" placeholder="Or write your clarification here. Example: Yes, but only for food processing participants...\nThen click Rewrite paragraph."></textarea><button type="button" class="soft" style="margin-top:8px" onclick="refineParagraph(${x.id},'COMMENT')">Rewrite paragraph using my comment</button><div id="rewrite-status-${x.id}" class="rewrite-status"></div></div>`:'';
-  return `<div class="item" id="item-${x.id}"><div class="meta"><strong>Paragraph ${x.id}</strong></div><div class="label">Marked correction</div><div class="revised">${diffWords(x.original,x.revised)}</div><div class="charline${warn}">Original: ${x.original.length} characters | Revised: ${x.revised.length} characters | Difference: ${x.revised.length-x.original.length}${warn?' | Outside strict layout range':''}</div>${x.reason?`<div class="reason"><strong>Editorial note:</strong> ${esc(x.reason)}</div>`:''}${(x.flags||[]).map(f=>`<div class="flag"><strong>Please confirm:</strong> ${esc(f)}</div>`).join('')}${feedback}</div>`;
+  const flag=x.flags&&x.flags.length?x.flags[0]:'';const ratio=x.original.length?x.revised.length/x.original.length:1;const warn=(ratio<0.92||ratio>1.08)?' charwarn':'';const isPage=currentReviewType==='page';
+  const feedback=flag?`<div class="feedback"><div class="feedback-title">Your response to this confirmation</div><div class="feedback-actions"><button type="button" class="yes" onclick="refineParagraph(${x.id},'YES')">Yes, this is correct</button><button type="button" class="no" onclick="refineParagraph(${x.id},'NO')">No, this is not correct</button></div><textarea id="comment-${x.id}" placeholder="Or write your clarification here, then click Rewrite."></textarea><button type="button" class="soft" style="margin-top:8px" onclick="refineParagraph(${x.id},'COMMENT')">Rewrite ${isPage?'page':'paragraph'} using my comment</button><div id="rewrite-status-${x.id}" class="rewrite-status"></div></div>`:'';
+  const cleanPage=isPage?`<div class="label">Clean corrected full page</div><div class="revised pageclean">${esc(x.revised).replace(/\n/g,'<br>')}</div>`:'';
+  return `<div class="item" id="item-${x.id}"><div class="meta"><strong>${isPage?'Full page review':'Paragraph '+x.id}</strong></div><div class="label">Marked correction</div><div class="revised">${diffWords(x.original,x.revised)}</div>${cleanPage}<div class="charline${warn}">Original: ${x.original.length} characters | Revised: ${x.revised.length} characters | Difference: ${x.revised.length-x.original.length}${warn?' | Outside strict layout range':''}</div>${x.reason?`<div class="reason"><strong>Editorial note:</strong> ${esc(x.reason)}</div>`:''}${(x.flags||[]).map(f=>`<div class="flag"><strong>Please confirm:</strong> ${esc(f)}</div>`).join('')}${feedback}</div>`
 }
-function renderResults(){document.getElementById('results').innerHTML=currentItems.map(itemHtml).join('');}
+function renderResults(){document.getElementById('results').innerHTML=currentItems.map(itemHtml).join('')}
 
-document.getElementById('reviewForm').addEventListener('submit', async e=>{
-  e.preventDefault(); const fd=new FormData();
+document.getElementById('reviewForm').addEventListener('submit',async e=>{
+  e.preventDefault();const fd=new FormData();
   if(mode==='text'){
-    const txt=textInput.value.trim(); if(!txt){status('Please type or paste text to review.',true);return;} fd.append('text',txt); currentFilename='Pasted Text.docx';
+    const txt=textInput.value.trim();if(!txt){status('Please type or paste text to review.',true);return}fd.append('text',txt);currentFilename='Pasted Text.docx';fd.append('page_mode','false');
+  }else if(mode==='page'){
+    const txt=pageInput.value.trim();const file=document.getElementById('file').files[0];if(!txt&&!file){status('Please paste the full page or choose a one page file.',true);return}if(txt){fd.append('text',txt);currentFilename='Pasted Page.docx'}else{fd.append('file',file);currentFilename=file.name}fd.append('page_mode','true');
   }else{
-    const file=document.getElementById('file').files[0]; if(!file){status('Please choose a document to review.',true);return;} fd.append('file',file); currentFilename=file.name;
+    const file=document.getElementById('file').files[0];if(!file){status('Please choose a document to review.',true);return}fd.append('file',file);currentFilename=file.name;fd.append('page_mode','false');
   }
-  fd.append('model',document.getElementById('model').value);
-  document.getElementById('go').disabled=true; document.getElementById('results').innerHTML=''; document.getElementById('actions').style.display='none'; status(mode==='text'?'Reviewing the text...':'Reviewing the document with surrounding paragraph context. Larger files may take a few minutes.');
-  try{const r=await fetch('/review',{method:'POST',body:fd}); const data=await r.json(); if(!r.ok)throw new Error(data.detail||'Review failed'); currentItems=data.items; currentFilename=data.filename==='Pasted Text'?'Pasted Text.docx':(data.filename||currentFilename); status(`Review complete. ${data.count} paragraph${data.count===1?'':'s'} checked using ${data.provider}.`); document.getElementById('actions').style.display='flex'; renderResults();
-  }catch(err){status(err.message,true);}finally{document.getElementById('go').disabled=false;}
+  fd.append('model',document.getElementById('model').value);document.getElementById('go').disabled=true;document.getElementById('results').innerHTML='';document.getElementById('actions').style.display='none';
+  status(mode==='page'?'Reviewing the complete page as one connected section...':mode==='text'?'Reviewing the text...':'Reviewing the document with surrounding paragraph context. Larger files may take a few minutes.');
+  try{const r=await fetch('/review',{method:'POST',body:fd});const data=await r.json();if(!r.ok)throw new Error(data.detail||'Review failed');currentItems=data.items;currentReviewType=data.review_type||'paragraphs';currentFilename=(data.filename==='Pasted Text'||data.filename==='Pasted Page')?(data.filename+'.docx'):(data.filename||currentFilename);status(currentReviewType==='page'?`Full page review complete using ${data.provider}.`:`Review complete. ${data.count} paragraph${data.count===1?'':'s'} checked using ${data.provider}.`);document.getElementById('actions').style.display='flex';renderResults()}catch(err){status(err.message,true)}finally{document.getElementById('go').disabled=false}
 });
-
-async function refineParagraph(id,decision){
-  const idx=currentItems.findIndex(x=>x.id===id); if(idx<0)return;
-  const x=currentItems[idx]; const commentBox=document.getElementById('comment-'+id); const comment=(commentBox?commentBox.value:'').trim();
-  if(decision==='COMMENT'&&!comment){document.getElementById('rewrite-status-'+id).textContent='Please write your clarification first.';return;}
-  const s=document.getElementById('rewrite-status-'+id); s.textContent='Rewriting this paragraph using your response and surrounding context...';
-  const prev=currentItems.slice(Math.max(0,idx-2),idx).map(p=>p.revised||p.original).join('\n\n');
-  const next=currentItems.slice(idx+1,idx+3).map(p=>p.revised||p.original).join('\n\n');
-  const fd=new FormData(); fd.append('paragraph_id',String(id)); fd.append('original',x.original); fd.append('revised',x.revised); fd.append('flag',(x.flags&&x.flags[0])||''); fd.append('decision',decision); fd.append('comment',comment); fd.append('context_before',prev); fd.append('context_after',next); fd.append('model',document.getElementById('model').value);
-  try{const r=await fetch('/refine',{method:'POST',body:fd}); const data=await r.json(); if(!r.ok)throw new Error(data.detail||'Rewrite failed'); currentItems[idx]=data; renderResults(); status(`Paragraph ${id} updated based on your response and chapter context.`);}catch(err){s.textContent=err.message;}
-}
-
-function downloadFilenameFromHeader(response, fallback){
-  const cd=response.headers.get('content-disposition')||'';
-  const match=cd.match(/filename="?([^";]+)"?/i);
-  return match&&match[1]?match[1]:fallback;
-}
-
-async function downloadDoc(kind,button){
-  if(!currentItems || currentItems.length===0){status('There is no reviewed content to download yet.',true);return;}
-  const btn=button || (kind==='reviewed'?document.getElementById('downloadReviewed'):document.getElementById('downloadClean'));
-  const oldText=btn?btn.textContent:'';
-  if(btn){btn.disabled=true;btn.textContent=kind==='reviewed'?'Preparing marked Word file...':'Preparing clean Word file...';}
-  status(kind==='reviewed'?'Preparing the marked Word review. Large documents can take a little time...':'Preparing the clean revised Word file...');
-  try{
-    const fd=new FormData();
-    fd.append('payload',JSON.stringify(currentItems));
-    fd.append('filename',currentFilename||'document.docx');
-    const r=await fetch('/download/'+kind,{method:'POST',body:fd});
-    if(!r.ok){
-      let message='Download generation failed.';
-      try{const data=await r.json(); message=data.detail||message;}catch(_){try{message=(await r.text())||message;}catch(__){}}
-      throw new Error(message);
-    }
-    const blob=await r.blob();
-    if(!blob || blob.size===0)throw new Error('The server created an empty file. Please try again.');
-    const fallback=(currentFilename||'document.docx').replace(/\.docx$/i,'')+(kind==='reviewed'?'_editorial_review.docx':'_clean_revised.docx');
-    const filename=downloadFilenameFromHeader(r,fallback);
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=filename;
-    a.style.display='none';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url),60000);
-    status(`Download started: ${filename}`);
-  }catch(err){
-    status(err.message||'Download generation failed.',true);
-  }finally{
-    if(btn){btn.disabled=false;btn.textContent=oldText;}
-  }
-}
+async function refineParagraph(id,decision){const idx=currentItems.findIndex(x=>x.id===id);if(idx<0)return;const x=currentItems[idx],commentBox=document.getElementById('comment-'+id),comment=(commentBox?commentBox.value:'').trim();if(decision==='COMMENT'&&!comment){document.getElementById('rewrite-status-'+id).textContent='Please write your clarification first.';return}const s=document.getElementById('rewrite-status-'+id);s.textContent='Rewriting using your response...';const prev=currentItems.slice(Math.max(0,idx-2),idx).map(p=>p.revised||p.original).join('\n\n');const next=currentItems.slice(idx+1,idx+3).map(p=>p.revised||p.original).join('\n\n');const fd=new FormData();fd.append('paragraph_id',String(id));fd.append('original',x.original);fd.append('revised',x.revised);fd.append('flag',(x.flags&&x.flags[0])||'');fd.append('decision',decision);fd.append('comment',comment);fd.append('context_before',prev);fd.append('context_after',next);fd.append('model',document.getElementById('model').value);try{const r=await fetch('/refine',{method:'POST',body:fd});const data=await r.json();if(!r.ok)throw new Error(data.detail||'Rewrite failed');currentItems[idx]=data;renderResults();status(`${currentReviewType==='page'?'Page':'Paragraph '+id} updated based on your response.`)}catch(err){s.textContent=err.message}}
+function downloadFilenameFromHeader(response,fallback){const cd=response.headers.get('content-disposition')||'';const match=cd.match(/filename="?([^";]+)"?/i);return match&&match[1]?match[1]:fallback}
+async function downloadDoc(kind,button){if(!currentItems||currentItems.length===0){status('There is no reviewed content to download yet.',true);return}const btn=button||(kind==='reviewed'?document.getElementById('downloadReviewed'):document.getElementById('downloadClean')),oldText=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent=kind==='reviewed'?'Preparing marked Word file...':'Preparing clean Word file...'}status(kind==='reviewed'?'Preparing the marked Word review. Large documents can take a little time...':'Preparing the clean revised Word file...');try{const fd=new FormData();fd.append('payload',JSON.stringify(currentItems));fd.append('filename',currentFilename||'document.docx');const r=await fetch('/download/'+kind,{method:'POST',body:fd});if(!r.ok){let message='Download generation failed.';try{const data=await r.json();message=data.detail||message}catch(_){try{message=(await r.text())||message}catch(__){}}throw new Error(message)}const blob=await r.blob();if(!blob||blob.size===0)throw new Error('The server created an empty file. Please try again.');const fallback=(currentFilename||'document.docx').replace(/\.docx$/i,'')+(kind==='reviewed'?'_editorial_review.docx':'_clean_revised.docx');const filename=downloadFilenameFromHeader(r,fallback),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);status(`Download started: ${filename}`)}catch(err){status(err.message||'Download generation failed.',true)}finally{if(btn){btn.disabled=false;btn.textContent=oldText}}}
 </script>
 </body>
 </html>
