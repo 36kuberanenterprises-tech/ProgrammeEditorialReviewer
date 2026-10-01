@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Programme Editorial Reviewer</title>
+<style>
+:root { --bg:#f5f7fb; --card:#fff; --ink:#172033; --muted:#667085; --line:#e4e7ec; --accent:#174ea6; --danger:#b42318; --blue:#0665c9; }
+*{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+.wrap{max-width:1100px;margin:38px auto;padding:0 18px}.hero{margin-bottom:22px}.hero h1{font-size:32px;margin:0 0 8px}.hero p{color:var(--muted);margin:0;line-height:1.55}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 8px 28px rgba(16,24,40,.05)}
+form.row{display:grid;grid-template-columns:1fr 220px 160px;gap:12px;align-items:end}.field label{display:block;font-weight:700;margin-bottom:7px}.field input,.field select{width:100%;padding:12px;border:1px solid #cfd4dc;border-radius:10px;background:#fff}
+button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);color:white;font-weight:700;cursor:pointer}button.secondary{background:#344054}button:disabled{opacity:.55;cursor:not-allowed}
+.note{margin-top:12px;color:var(--muted);font-size:13px}.status{margin:18px 0;padding:12px 14px;border-radius:10px;background:#eef4ff;display:none}.status.error{background:#fff1f0;color:var(--danger)}
+.actions{display:none;gap:10px;margin:18px 0}.item{border-top:1px solid var(--line);padding:22px 0}.item:first-child{border-top:0}.meta{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px}.reason{font-size:14px;color:var(--muted);margin:8px 0}.flag{margin-top:8px;padding:9px 11px;background:#fff4ed;color:#9a3412;border-radius:8px;font-size:14px}.revised{padding:13px;border:1px solid var(--line);border-radius:10px;line-height:1.6;background:#f8fbff;margin-top:8px}.label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:5px}.diff-del{color:#b42318;text-decoration:line-through}.diff-add{color:#0665c9;font-weight:600}
+@media(max-width:760px){form.row{grid-template-columns:1fr}.hero h1{font-size:27px}.actions{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <h1>Programme Editorial Reviewer</h1>
+    <p>Upload a programme report, Coffee Table Book draft or beneficiary story. The app checks language, repetition, factual caution, programme logic and editorial consistency. It does not invent missing impact.</p>
+  </div>
+  <div class="card">
+    <form id="reviewForm" class="row">
+      <div class="field"><label>Document</label><input id="file" type="file" accept=".docx,.pdf,.txt,.md" required></div>
+      <div class="field"><label>Model</label><select id="model"><option value="gpt-6-luna">GPT 6 Luna</option><option value="gpt-6-sol">GPT 6 Sol</option></select></div>
+      <button id="go" type="submit">Review document</button>
+    </form>
+    <div class="note">Your OpenAI API key remains on the server. It is never entered into this webpage.</div>
+    <div id="status" class="status"></div>
+    <div id="actions" class="actions">
+      <button class="secondary" onclick="downloadDoc('reviewed')">Download marked review</button>
+      <button onclick="downloadDoc('clean')">Download clean revised copy</button>
+    </div>
+    <div id="results"></div>
+  </div>
+</div>
+<script>
+let currentItems = []; let currentFilename = 'document.docx';
+const statusBox = document.getElementById('status');
+function status(msg, err=false){statusBox.style.display='block';statusBox.className='status'+(err?' error':'');statusBox.textContent=msg;}
+function esc(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function diffWords(a,b){
+  const A=a.split(/\s+/), B=b.split(/\s+/); const n=A.length,m=B.length;
+  const dp=Array.from({length:n+1},()=>Array(m+1).fill(0));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
+  let i=0,j=0,out=[]; while(i<n&&j<m){if(A[i]===B[j]){out.push(esc(A[i]));i++;j++;}else if(dp[i+1][j]>=dp[i][j+1]){out.push('<span class="diff-del">'+esc(A[i])+'</span>');i++;}else{out.push('<span class="diff-add">'+esc(B[j])+'</span>');j++;}}
+  while(i<n)out.push('<span class="diff-del">'+esc(A[i++])+'</span>'); while(j<m)out.push('<span class="diff-add">'+esc(B[j++])+'</span>'); return out.join(' ');
+}
+document.getElementById('reviewForm').addEventListener('submit', async e=>{
+  e.preventDefault(); const file=document.getElementById('file').files[0]; if(!file)return;
+  currentFilename=file.name; const fd=new FormData(); fd.append('file',file); fd.append('model',document.getElementById('model').value);
+  document.getElementById('go').disabled=true; document.getElementById('results').innerHTML=''; document.getElementById('actions').style.display='none'; status('Reviewing the document. Larger files may take a few minutes.');
+  try{const r=await fetch('/review',{method:'POST',body:fd}); const data=await r.json(); if(!r.ok)throw new Error(data.detail||'Review failed'); currentItems=data.items; status(`Review complete. ${data.count} paragraphs checked.`); document.getElementById('actions').style.display='flex';
+    document.getElementById('results').innerHTML=data.items.map(x=>`<div class="item"><div class="meta"><strong>Paragraph ${x.id}</strong></div><div class="label">Marked correction</div><div class="revised">${diffWords(x.original,x.revised)}</div>${x.reason?`<div class="reason"><strong>Editorial note:</strong> ${esc(x.reason)}</div>`:''}${(x.flags||[]).map(f=>`<div class="flag"><strong>Please confirm:</strong> ${esc(f)}</div>`).join('')}</div>`).join('');
+  }catch(err){status(err.message,true);}finally{document.getElementById('go').disabled=false;}
+});
+async function downloadDoc(kind){
+  const fd=new FormData(); fd.append('payload',JSON.stringify(currentItems)); fd.append('filename',currentFilename); const r=await fetch('/download/'+kind,{method:'POST',body:fd}); if(!r.ok){status('Download generation failed.',true);return;} const blob=await r.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='editorial_'+kind+'.docx'; a.click(); URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
