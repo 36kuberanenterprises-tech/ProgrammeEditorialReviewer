@@ -12,10 +12,11 @@
 .modebar{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}.modebtn{background:#eef2f8;color:#344054;border:1px solid #d0d5dd}.modebtn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 form.row{display:grid;grid-template-columns:1fr 240px 160px;gap:12px;align-items:end}.field label{display:block;font-weight:700;margin-bottom:7px}.field input,.field select,textarea{width:100%;padding:12px;border:1px solid #cfd4dc;border-radius:10px;background:#fff;font:inherit}textarea{min-height:210px;resize:vertical;line-height:1.55}
 .textwrap{display:none;margin-bottom:16px}.textmeta{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:12px;color:var(--muted)}
-button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);color:white;font-weight:700;cursor:pointer}button.secondary{background:#344054}button:disabled{opacity:.55;cursor:not-allowed}
+button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);color:white;font-weight:700;cursor:pointer}button.secondary{background:#344054}button.soft{background:#eef2f8;color:#344054;border:1px solid #d0d5dd}button.yes{background:#067647}button.no{background:#b42318}button:disabled{opacity:.55;cursor:not-allowed}
 .note{margin-top:12px;color:var(--muted);font-size:13px}.status{margin:18px 0;padding:12px 14px;border-radius:10px;background:#eef4ff;display:none}.status.error{background:#fff1f0;color:var(--danger)}
-.actions{display:none;gap:10px;margin:18px 0}.item{border-top:1px solid var(--line);padding:22px 0}.item:first-child{border-top:0}.meta{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px}.reason{font-size:14px;color:var(--muted);margin:8px 0}.flag{margin-top:8px;padding:9px 11px;background:#fff4ed;color:#9a3412;border-radius:8px;font-size:14px}.revised{padding:13px;border:1px solid var(--line);border-radius:10px;line-height:1.6;background:#f8fbff;margin-top:8px}.label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:5px}.diff-del{color:#b42318;text-decoration:line-through}.diff-add{color:#0665c9;font-weight:600}
+.actions{display:none;gap:10px;margin:18px 0}.item{border-top:1px solid var(--line);padding:22px 0}.item:first-child{border-top:0}.meta{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px}.reason{font-size:14px;color:var(--muted);margin:8px 0}.flag{margin-top:8px;padding:11px 12px;background:#fff4ed;color:#9a3412;border-radius:8px;font-size:14px}.revised{padding:13px;border:1px solid var(--line);border-radius:10px;line-height:1.6;background:#f8fbff;margin-top:8px}.label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:5px}.diff-del{color:#b42318;text-decoration:line-through}.diff-add{color:#0665c9;font-weight:600}
 .badge{display:inline-block;background:#ecfdf3;color:#027a48;border:1px solid #abefc6;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700;margin-top:12px}
+.feedback{margin-top:10px;padding:12px;border:1px solid #fed7aa;background:#fffaf5;border-radius:10px}.feedback-title{font-weight:700;color:#7c2d12;margin-bottom:8px}.feedback-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.feedback textarea{min-height:84px}.rewrite-status{font-size:13px;color:var(--muted);margin-top:8px}.charline{font-size:12px;color:var(--muted);margin-top:6px}
 @media(max-width:760px){form.row{grid-template-columns:1fr}.hero h1{font-size:27px}.actions{flex-direction:column}.textmeta{flex-direction:column}}
 </style>
 </head>
@@ -42,7 +43,7 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
       <div class="field"><label>Model</label><select id="model"><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite Free</option><option value="gemini-3.8-flash">Gemini 3.8 Flash Free</option></select></div>
       <button id="go" type="submit">Review</button>
     </form>
-    <div class="note">You can either upload a file or use the text box. The Gemini API key stays on the Render server. Free tier limits still apply.</div>
+    <div class="note">You can upload a file or paste text. If the app asks you to confirm something, choose Yes, No, or write a clarification. The paragraph can then be rewritten using your response.</div>
     <div id="status" class="status"></div>
     <div id="actions" class="actions">
       <button class="secondary" onclick="downloadDoc('reviewed')">Download marked review</button>
@@ -68,6 +69,13 @@ function diffWords(a,b){
   let i=0,j=0,out=[]; while(i<n&&j<m){if(A[i]===B[j]){out.push(esc(A[i]));i++;j++;}else if(dp[i+1][j]>=dp[i][j+1]){out.push('<span class="diff-del">'+esc(A[i])+'</span>');i++;}else{out.push('<span class="diff-add">'+esc(B[j])+'</span>');j++;}}
   while(i<n)out.push('<span class="diff-del">'+esc(A[i++])+'</span>'); while(j<m)out.push('<span class="diff-add">'+esc(B[j++])+'</span>'); return out.join(' ');
 }
+function itemHtml(x){
+  const flag=x.flags&&x.flags.length?x.flags[0]:'';
+  const feedback=flag?`<div class="feedback"><div class="feedback-title">Your response to this confirmation</div><div class="feedback-actions"><button type="button" class="yes" onclick="refineParagraph(${x.id},'YES')">Yes, this is correct</button><button type="button" class="no" onclick="refineParagraph(${x.id},'NO')">No, this is not correct</button></div><textarea id="comment-${x.id}" placeholder="Or write your clarification here. Example: Yes, but only for food processing participants...\nThen click Rewrite paragraph."></textarea><button type="button" class="soft" style="margin-top:8px" onclick="refineParagraph(${x.id},'COMMENT')">Rewrite paragraph using my comment</button><div id="rewrite-status-${x.id}" class="rewrite-status"></div></div>`:'';
+  return `<div class="item" id="item-${x.id}"><div class="meta"><strong>Paragraph ${x.id}</strong></div><div class="label">Marked correction</div><div class="revised">${diffWords(x.original,x.revised)}</div><div class="charline">Original: ${x.original.length} characters | Revised: ${x.revised.length} characters | Difference: ${x.revised.length-x.original.length}</div>${x.reason?`<div class="reason"><strong>Editorial note:</strong> ${esc(x.reason)}</div>`:''}${(x.flags||[]).map(f=>`<div class="flag"><strong>Please confirm:</strong> ${esc(f)}</div>`).join('')}${feedback}</div>`;
+}
+function renderResults(){document.getElementById('results').innerHTML=currentItems.map(itemHtml).join('');}
+
 document.getElementById('reviewForm').addEventListener('submit', async e=>{
   e.preventDefault(); const fd=new FormData();
   if(mode==='text'){
@@ -77,10 +85,19 @@ document.getElementById('reviewForm').addEventListener('submit', async e=>{
   }
   fd.append('model',document.getElementById('model').value);
   document.getElementById('go').disabled=true; document.getElementById('results').innerHTML=''; document.getElementById('actions').style.display='none'; status(mode==='text'?'Reviewing the text...':'Reviewing the document. Larger files may take a few minutes.');
-  try{const r=await fetch('/review',{method:'POST',body:fd}); const data=await r.json(); if(!r.ok)throw new Error(data.detail||'Review failed'); currentItems=data.items; currentFilename=data.filename==='Pasted Text'?'Pasted Text.docx':(data.filename||currentFilename); status(`Review complete. ${data.count} paragraph${data.count===1?'':'s'} checked using ${data.provider}.`); document.getElementById('actions').style.display='flex';
-    document.getElementById('results').innerHTML=data.items.map(x=>`<div class="item"><div class="meta"><strong>Paragraph ${x.id}</strong></div><div class="label">Marked correction</div><div class="revised">${diffWords(x.original,x.revised)}</div>${x.reason?`<div class="reason"><strong>Editorial note:</strong> ${esc(x.reason)}</div>`:''}${(x.flags||[]).map(f=>`<div class="flag"><strong>Please confirm:</strong> ${esc(f)}</div>`).join('')}</div>`).join('');
+  try{const r=await fetch('/review',{method:'POST',body:fd}); const data=await r.json(); if(!r.ok)throw new Error(data.detail||'Review failed'); currentItems=data.items; currentFilename=data.filename==='Pasted Text'?'Pasted Text.docx':(data.filename||currentFilename); status(`Review complete. ${data.count} paragraph${data.count===1?'':'s'} checked using ${data.provider}.`); document.getElementById('actions').style.display='flex'; renderResults();
   }catch(err){status(err.message,true);}finally{document.getElementById('go').disabled=false;}
 });
+
+async function refineParagraph(id,decision){
+  const idx=currentItems.findIndex(x=>x.id===id); if(idx<0)return;
+  const x=currentItems[idx]; const commentBox=document.getElementById('comment-'+id); const comment=(commentBox?commentBox.value:'').trim();
+  if(decision==='COMMENT'&&!comment){document.getElementById('rewrite-status-'+id).textContent='Please write your clarification first.';return;}
+  const s=document.getElementById('rewrite-status-'+id); s.textContent='Rewriting this paragraph using your response...';
+  const fd=new FormData(); fd.append('paragraph_id',String(id)); fd.append('original',x.original); fd.append('revised',x.revised); fd.append('flag',(x.flags&&x.flags[0])||''); fd.append('decision',decision); fd.append('comment',comment); fd.append('model',document.getElementById('model').value);
+  try{const r=await fetch('/refine',{method:'POST',body:fd}); const data=await r.json(); if(!r.ok)throw new Error(data.detail||'Rewrite failed'); currentItems[idx]=data; renderResults(); status(`Paragraph ${id} updated based on your response.`);}catch(err){s.textContent=err.message;}
+}
+
 async function downloadDoc(kind){
   const fd=new FormData(); fd.append('payload',JSON.stringify(currentItems)); fd.append('filename',currentFilename); const r=await fetch('/download/'+kind,{method:'POST',body:fd}); if(!r.ok){status('Download generation failed.',true);return;} const blob=await r.blob(); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='editorial_'+kind+'.docx'; a.click(); URL.revokeObjectURL(url);
 }
