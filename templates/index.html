@@ -9,28 +9,40 @@
 *{box-sizing:border-box} body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
 .wrap{max-width:1100px;margin:38px auto;padding:0 18px}.hero{margin-bottom:22px}.hero h1{font-size:32px;margin:0 0 8px}.hero p{color:var(--muted);margin:0;line-height:1.55}
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:0 8px 28px rgba(16,24,40,.05)}
-form.row{display:grid;grid-template-columns:1fr 240px 160px;gap:12px;align-items:end}.field label{display:block;font-weight:700;margin-bottom:7px}.field input,.field select{width:100%;padding:12px;border:1px solid #cfd4dc;border-radius:10px;background:#fff}
+.modebar{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}.modebtn{background:#eef2f8;color:#344054;border:1px solid #d0d5dd}.modebtn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+form.row{display:grid;grid-template-columns:1fr 240px 160px;gap:12px;align-items:end}.field label{display:block;font-weight:700;margin-bottom:7px}.field input,.field select,textarea{width:100%;padding:12px;border:1px solid #cfd4dc;border-radius:10px;background:#fff;font:inherit}textarea{min-height:210px;resize:vertical;line-height:1.55}
+.textwrap{display:none;margin-bottom:16px}.textmeta{display:flex;justify-content:space-between;gap:10px;margin-top:6px;font-size:12px;color:var(--muted)}
 button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);color:white;font-weight:700;cursor:pointer}button.secondary{background:#344054}button:disabled{opacity:.55;cursor:not-allowed}
 .note{margin-top:12px;color:var(--muted);font-size:13px}.status{margin:18px 0;padding:12px 14px;border-radius:10px;background:#eef4ff;display:none}.status.error{background:#fff1f0;color:var(--danger)}
 .actions{display:none;gap:10px;margin:18px 0}.item{border-top:1px solid var(--line);padding:22px 0}.item:first-child{border-top:0}.meta{display:flex;justify-content:space-between;gap:10px;margin-bottom:8px}.reason{font-size:14px;color:var(--muted);margin:8px 0}.flag{margin-top:8px;padding:9px 11px;background:#fff4ed;color:#9a3412;border-radius:8px;font-size:14px}.revised{padding:13px;border:1px solid var(--line);border-radius:10px;line-height:1.6;background:#f8fbff;margin-top:8px}.label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-bottom:5px}.diff-del{color:#b42318;text-decoration:line-through}.diff-add{color:#0665c9;font-weight:600}
 .badge{display:inline-block;background:#ecfdf3;color:#027a48;border:1px solid #abefc6;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700;margin-top:12px}
-@media(max-width:760px){form.row{grid-template-columns:1fr}.hero h1{font-size:27px}.actions{flex-direction:column}}
+@media(max-width:760px){form.row{grid-template-columns:1fr}.hero h1{font-size:27px}.actions{flex-direction:column}.textmeta{flex-direction:column}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="hero">
     <h1>Programme Editorial Reviewer</h1>
-    <p>Upload a programme report, Coffee Table Book draft or beneficiary story. The app checks language, repetition, factual caution, programme logic and editorial consistency. It does not invent missing impact.</p>
+    <p>Review a full document or paste a single paragraph for quick correction. The app checks language, repetition, factual caution, programme logic and editorial consistency without inventing missing impact.</p>
     <span class="badge">Free AI mode</span>
   </div>
   <div class="card">
+    <div class="modebar">
+      <button type="button" id="fileMode" class="modebtn active">Upload document</button>
+      <button type="button" id="textMode" class="modebtn">Type or paste text</button>
+    </div>
+
+    <div id="textWrap" class="textwrap">
+      <div class="field"><label>Text or paragraph</label><textarea id="textInput" placeholder="Type or paste one paragraph, beneficiary story, email text, report section or any content here..."></textarea></div>
+      <div class="textmeta"><span>For paragraph wise checking, paste only the paragraph you want to review.</span><span id="charCount">0 characters</span></div>
+    </div>
+
     <form id="reviewForm" class="row">
-      <div class="field"><label>Document</label><input id="file" type="file" accept=".docx,.pdf,.txt,.md" required></div>
+      <div class="field" id="fileField"><label>Document</label><input id="file" type="file" accept=".docx,.pdf,.txt,.md"></div>
       <div class="field"><label>Model</label><select id="model"><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite Free</option><option value="gemini-3.8-flash">Gemini 3.8 Flash Free</option></select></div>
-      <button id="go" type="submit">Review document</button>
+      <button id="go" type="submit">Review</button>
     </form>
-    <div class="note">This version uses the Gemini API free tier. Your Gemini API key stays on the Render server and is never entered on this page. Free tier limits still apply.</div>
+    <div class="note">You can either upload a file or use the text box. The Gemini API key stays on the Render server. Free tier limits still apply.</div>
     <div id="status" class="status"></div>
     <div id="actions" class="actions">
       <button class="secondary" onclick="downloadDoc('reviewed')">Download marked review</button>
@@ -40,10 +52,15 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
   </div>
 </div>
 <script>
-let currentItems = []; let currentFilename = 'document.docx';
+let currentItems = []; let currentFilename = 'document.docx'; let mode='file';
 const statusBox = document.getElementById('status');
+const fileMode=document.getElementById('fileMode'), textMode=document.getElementById('textMode');
+const fileField=document.getElementById('fileField'), textWrap=document.getElementById('textWrap'), textInput=document.getElementById('textInput');
 function status(msg, err=false){statusBox.style.display='block';statusBox.className='status'+(err?' error':'');statusBox.textContent=msg;}
 function esc(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function setMode(next){mode=next; const isText=mode==='text'; textWrap.style.display=isText?'block':'none'; fileField.style.display=isText?'none':'block'; fileMode.classList.toggle('active',!isText); textMode.classList.toggle('active',isText); statusBox.style.display='none';}
+fileMode.onclick=()=>setMode('file'); textMode.onclick=()=>setMode('text');
+textInput.addEventListener('input',()=>document.getElementById('charCount').textContent=textInput.value.length+' characters');
 function diffWords(a,b){
   const A=a.split(/\s+/), B=b.split(/\s+/); const n=A.length,m=B.length;
   const dp=Array.from({length:n+1},()=>Array(m+1).fill(0));
@@ -52,10 +69,15 @@ function diffWords(a,b){
   while(i<n)out.push('<span class="diff-del">'+esc(A[i++])+'</span>'); while(j<m)out.push('<span class="diff-add">'+esc(B[j++])+'</span>'); return out.join(' ');
 }
 document.getElementById('reviewForm').addEventListener('submit', async e=>{
-  e.preventDefault(); const file=document.getElementById('file').files[0]; if(!file)return;
-  currentFilename=file.name; const fd=new FormData(); fd.append('file',file); fd.append('model',document.getElementById('model').value);
-  document.getElementById('go').disabled=true; document.getElementById('results').innerHTML=''; document.getElementById('actions').style.display='none'; status('Reviewing the document. Larger files may take a few minutes.');
-  try{const r=await fetch('/review',{method:'POST',body:fd}); const data=await r.json(); if(!r.ok)throw new Error(data.detail||'Review failed'); currentItems=data.items; status(`Review complete. ${data.count} paragraphs checked using ${data.provider}.`); document.getElementById('actions').style.display='flex';
+  e.preventDefault(); const fd=new FormData();
+  if(mode==='text'){
+    const txt=textInput.value.trim(); if(!txt){status('Please type or paste text to review.',true);return;} fd.append('text',txt); currentFilename='Pasted Text.docx';
+  }else{
+    const file=document.getElementById('file').files[0]; if(!file){status('Please choose a document to review.',true);return;} fd.append('file',file); currentFilename=file.name;
+  }
+  fd.append('model',document.getElementById('model').value);
+  document.getElementById('go').disabled=true; document.getElementById('results').innerHTML=''; document.getElementById('actions').style.display='none'; status(mode==='text'?'Reviewing the text...':'Reviewing the document. Larger files may take a few minutes.');
+  try{const r=await fetch('/review',{method:'POST',body:fd}); const data=await r.json(); if(!r.ok)throw new Error(data.detail||'Review failed'); currentItems=data.items; currentFilename=data.filename==='Pasted Text'?'Pasted Text.docx':(data.filename||currentFilename); status(`Review complete. ${data.count} paragraph${data.count===1?'':'s'} checked using ${data.provider}.`); document.getElementById('actions').style.display='flex';
     document.getElementById('results').innerHTML=data.items.map(x=>`<div class="item"><div class="meta"><strong>Paragraph ${x.id}</strong></div><div class="label">Marked correction</div><div class="revised">${diffWords(x.original,x.revised)}</div>${x.reason?`<div class="reason"><strong>Editorial note:</strong> ${esc(x.reason)}</div>`:''}${(x.flags||[]).map(f=>`<div class="flag"><strong>Please confirm:</strong> ${esc(f)}</div>`).join('')}</div>`).join('');
   }catch(err){status(err.message,true);}finally{document.getElementById('go').disabled=false;}
 });
