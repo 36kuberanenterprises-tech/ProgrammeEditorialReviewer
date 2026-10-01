@@ -6,6 +6,7 @@ import difflib
 from pathlib import Path
 from typing import List, Dict, Any
 
+import httpx
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -13,7 +14,6 @@ from fastapi.requests import Request
 from docx import Document
 from docx.shared import RGBColor
 from pypdf import PdfReader
-from openai import OpenAI
 
 BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="Programme Editorial Reviewer")
@@ -38,6 +38,7 @@ Rules:
 12. Do not use hyphens, en dashes or em dashes in newly written prose. Rewrite sentences to avoid them.
 13. Keep the revised paragraph close to the source in meaning and length unless repetition requires shortening.
 14. Do not silently correct factual conflicts. Flag them.
+15. Do not add new facts from general knowledge. Work only from the supplied text.
 
 Return ONLY valid JSON in this exact shape:
 {
@@ -53,12 +54,20 @@ Return ONLY valid JSON in this exact shape:
 The id must match the paragraph id supplied by the user.
 """
 
+ALLOWED_MODELS = {
+    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
+    "gemini-3.8-flash": "Gemini 3.8 Flash",
+}
 
-def get_client() -> OpenAI:
-    key = os.getenv("OPENAI_API_KEY")
+
+def get_gemini_key() -> str:
+    key = os.getenv("GEMINI_API_KEY")
     if not key:
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured on the server.")
-    return OpenAI(api_key=key)
+        raise HTTPException(
+            status_code=500,
+            detail="GEMINI_API_KEY is not configured on the server. Create a free Gemini API key in Google AI Studio and add it to Render Environment.",
+        )
+    return key
 
 
 def extract_text(filename: str, data: bytes) -> List[str]:
@@ -82,7 +91,7 @@ def extract_text(filename: str, data: bytes) -> List[str]:
     raise HTTPException(status_code=400, detail="Supported files: DOCX, PDF, TXT and MD.")
 
 
-def chunks(items: List[Dict[str, Any]], max_chars: int = 12000):
+def chunks(items: List[Dict[str, Any]], max_chars: int = 10000):
     batch, size = [], 0
     for item in items:
         s = len(item["text"])
@@ -109,20 +118,60 @@ def extract_json(text: str) -> Dict[str, Any]:
         return json.loads(m.group(0))
 
 
+def gemini_generate(model: str, payload: str) -> str:
+    key = get_gemini_key()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+    body = {
+        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": payload}]}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "responseMimeType": "application/json",
+            "maxOutputTokens": 32768,
+        },
+    }
+    try:
+        with httpx.Client(timeout=120.0) as client:
+            response = client.post(
+                url,
+                headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+                json=body,
+            )
+    except httpx.HTTPError as exc:
+        raise RuntimeError(f"Could not reach Gemini API: {exc}") from exc
+
+    if response.status_code >= 400:
+        try:
+            err = response.json().get("error", {})
+            message = err.get("message") or response.text
+        except Exception:
+            message = response.text
+        if response.status_code == 429:
+            raise RuntimeError("Gemini free tier rate limit reached. Please wait and try again later.")
+        if response.status_code in {401, 403}:
+            raise RuntimeError("Gemini API key is invalid or does not have access to this model.")
+        raise RuntimeError(f"Gemini API error {response.status_code}: {message}")
+
+    data = response.json()
+    candidates = data.get("candidates") or []
+    if not candidates:
+        feedback = data.get("promptFeedback") or {}
+        raise RuntimeError(f"Gemini returned no editorial response. {feedback}")
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text = "".join(str(part.get("text", "")) for part in parts if part.get("text"))
+    if not text.strip():
+        raise RuntimeError("Gemini returned an empty editorial response.")
+    return text
+
+
 def review_paragraphs(paragraphs: List[str], model: str) -> List[Dict[str, Any]]:
-    client = get_client()
     source_items = [{"id": i + 1, "text": p} for i, p in enumerate(paragraphs)]
     reviewed: Dict[int, Dict[str, Any]] = {}
 
     for batch in chunks(source_items):
         payload = json.dumps({"paragraphs": batch}, ensure_ascii=False)
-        response = client.responses.create(
-            model=model,
-            instructions=SYSTEM_PROMPT,
-            input=payload,
-            store=False,
-        )
-        data = extract_json(response.output_text)
+        text = gemini_generate(model, payload)
+        data = extract_json(text)
         for item in data.get("items", []):
             try:
                 idx = int(item["id"])
@@ -130,12 +179,15 @@ def review_paragraphs(paragraphs: List[str], model: str) -> List[Dict[str, Any]]
                 continue
             if idx < 1 or idx > len(paragraphs):
                 continue
+            flags = item.get("flags", []) or []
+            if not isinstance(flags, list):
+                flags = [str(flags)]
             reviewed[idx] = {
                 "id": idx,
                 "original": paragraphs[idx - 1],
                 "revised": str(item.get("revised", paragraphs[idx - 1])).strip(),
                 "reason": str(item.get("reason", "")).strip(),
-                "flags": item.get("flags", []) or [],
+                "flags": [str(flag) for flag in flags],
             }
 
     result = []
@@ -225,12 +277,16 @@ def home(request: Request):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "api_key_configured": bool(os.getenv("OPENAI_API_KEY"))}
+    return {
+        "status": "ok",
+        "provider": "gemini",
+        "gemini_key_configured": bool(os.getenv("GEMINI_API_KEY")),
+    }
 
 
 @app.post("/review")
-async def review(file: UploadFile = File(...), model: str = Form("gpt-6-luna")):
-    if model not in {"gpt-6-luna", "gpt-6-sol"}:
+async def review(file: UploadFile = File(...), model: str = Form("gemini-3.1-flash-lite")):
+    if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
     data = await file.read()
     if len(data) > 15 * 1024 * 1024:
@@ -244,7 +300,7 @@ async def review(file: UploadFile = File(...), model: str = Form("gpt-6-luna")):
         raise
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Editorial review could not be completed: {exc}") from exc
-    return {"filename": file.filename, "count": len(results), "items": results}
+    return {"filename": file.filename, "count": len(results), "items": results, "provider": "Gemini free tier"}
 
 
 @app.post("/download/reviewed")
