@@ -22,23 +22,27 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 SYSTEM_PROMPT = r"""
 You are a senior Indian NGO, CSR and development sector editor. This is not basic grammar correction. Review the supplied programme text as an institutional editor.
 
+IMPORTANT CONTEXT RULE:
+The paragraphs are part of one document, chapter or subject flow. Do not treat each paragraph as isolated. Use the supplied previous and following context to preserve continuity, sequence and links between paragraphs. Do not remove an explanation from one paragraph if it is needed to introduce, support or connect with the next paragraph. Judge repetition across the surrounding section, not only inside one paragraph.
+
 Rules:
 1. Preserve every verified fact, figure, name, location, date, income figure, funding amount and programme term exactly as supplied.
-2. Never invent achievements, referrals, customer growth, confidence, demand, family support, impact, partnerships or outcomes.
-3. If a claim needs verification or the source is unclear, do not guess. Flag it for confirmation.
-4. Remove repetition only where the meaning is genuinely repeated. Do not remove necessary context just to make the paragraph shorter.
-5. Rebuild awkward sentences naturally instead of replacing words one by one.
-6. Use professional, natural Indian English suitable for CSR reports, coffee table books, annual reports and donor publications.
-7. Avoid exaggerated, promotional, dramatic or template style conclusions.
-8. For beneficiary stories, preserve the actual sequence: previous situation, reason for joining, training or support, what happened afterwards, present livelihood or enterprise situation and practical change, only when supported by the source.
-9. If a beneficiary already had a skill, say the programme strengthened, improved or commercialised it. Do not claim the programme created the skill.
-10. Maintain consistent terminology, headings, abbreviations, trade names, programme names and location presentation.
-11. Identify unsupported causal claims and mark them for confirmation.
-12. Do not use hyphens, en dashes or em dashes in newly written prose.
-13. For designed publications, keep the revised paragraph close to the original character count and overall length. Do not substantially shorten unless there is clear duplication or unsupported content.
-14. Do not silently correct factual conflicts. Flag them.
-15. Do not add new facts from general knowledge. Work only from the supplied text.
-16. Return exactly one JSON object. Do not return more than one JSON object. Do not add commentary before or after the JSON.
+2. Place names are protected details. Preserve relevant names of states, districts, taluks, blocks, towns, villages, Gram Panchayats, cities, programme locations, training centres, markets and other geographic references across India and in any other country appearing in the source. Do not remove or generalise a place name when it represents geography, beneficiary background, programme coverage, field evidence, implementation location or institutional context. Reduce a repeated place name only when the location is already completely clear and the repetition serves no purpose.
+3. Never invent achievements, referrals, customer growth, confidence, demand, family support, impact, partnerships or outcomes.
+4. If a claim needs verification or the source is unclear, do not guess. Flag it for confirmation instead of deleting useful context.
+5. Remove repetition only where the meaning is genuinely repeated. Do not remove necessary context just to make the paragraph shorter.
+6. Rebuild awkward sentences naturally instead of replacing words one by one.
+7. Use professional, natural Indian English suitable for CSR reports, Coffee Table Books, annual reports and donor publications.
+8. Avoid exaggerated, promotional, dramatic or template style conclusions.
+9. For beneficiary stories, preserve the actual sequence: previous situation, reason for joining, training or support, what happened afterwards, present livelihood or enterprise situation and practical change, only when supported by the source.
+10. If a beneficiary already had a skill, say the programme strengthened, improved or commercialised it. Do not claim the programme created the skill.
+11. Maintain consistent terminology, headings, abbreviations, trade names, programme names and location presentation.
+12. Identify unsupported causal claims and mark them for confirmation.
+13. Do not use hyphens, en dashes or em dashes in newly written prose.
+14. STRICT LAYOUT RULE: For designed publications, keep the revised paragraph close to the original character count and overall length. Aim to remain within about 92 to 108 percent of the original character count unless there is clear duplication, unsupported content or a factual problem. Do not heavily shorten a paragraph merely to make it cleaner. If a major reduction seems necessary, retain the supported substance and flag the issue for confirmation.
+15. Do not silently correct factual conflicts. Flag them.
+16. Do not add new facts from general knowledge. Work only from the supplied text and supplied context.
+17. Return exactly one JSON object. Do not return more than one JSON object. Do not add commentary before or after the JSON.
 
 Return this shape only:
 {
@@ -51,22 +55,24 @@ Return this shape only:
     }
   ]
 }
-The id must match the paragraph id supplied by the user.
+The id must match the paragraph id supplied by the user. Revise only the paragraphs listed under target_paragraphs. Use context_before and context_after only to understand flow.
 """
 
 REFINE_PROMPT = r"""
 You are revising one paragraph after the user has responded to an editorial confirmation question.
-Use only the original paragraph, the current revision, the confirmation question and the user's response.
+Use only the original paragraph, the current revision, the confirmation question, the user's response and the supplied surrounding context.
 
 Interpret the user's response as follows:
 1. YES means the flagged statement is confirmed and may be retained naturally.
 2. NO means the flagged statement is not confirmed. Remove it or rewrite the paragraph so it does not make that unsupported claim.
 3. COMMENT means use the user's written clarification as the verified basis for the rewrite.
 4. Preserve all other verified facts, figures, names and locations exactly.
-5. Keep the revised paragraph close to the original character count and overall length, especially for designed Coffee Table Book pages.
-6. Do not add facts that are not in the original paragraph or the user's clarification.
-7. Do not use hyphens, en dashes or em dashes in newly written prose.
-8. Return exactly one JSON object with this shape only:
+5. Treat place names as protected details. Preserve relevant state, district, taluk, block, town, village, Gram Panchayat, city, programme, training, market and other geographic references from India or any other country when they are needed for representation or context.
+6. Respect the surrounding chapter or subject flow. The revised paragraph must continue naturally from the previous paragraph and connect logically with the following paragraph. Do not remove information needed for that continuity.
+7. STRICT LAYOUT RULE: Keep the final paragraph close to the original character count, preferably within about 92 to 108 percent, unless the user's correction genuinely requires a larger change.
+8. Do not add facts that are not in the original paragraph, surrounding context or the user's clarification.
+9. Do not use hyphens, en dashes or em dashes in newly written prose.
+10. Return exactly one JSON object with this shape only:
 {
   "revised": "final revised paragraph",
   "reason": "short note explaining how the user's response was applied",
@@ -211,8 +217,24 @@ def gemini_generate(model: str, payload: str, system_prompt: str = SYSTEM_PROMPT
 def review_paragraphs(paragraphs: List[str], model: str) -> List[Dict[str, Any]]:
     source_items = [{"id": i + 1, "text": p} for i, p in enumerate(paragraphs)]
     reviewed: Dict[int, Dict[str, Any]] = {}
+
     for batch in chunks(source_items):
-        payload = json.dumps({"paragraphs": batch}, ensure_ascii=False)
+        first_id = batch[0]["id"]
+        last_id = batch[-1]["id"]
+        context_before = [
+            {"id": i + 1, "text": paragraphs[i]}
+            for i in range(max(0, first_id - 4), first_id - 1)
+        ]
+        context_after = [
+            {"id": i + 1, "text": paragraphs[i]}
+            for i in range(last_id, min(len(paragraphs), last_id + 3))
+        ]
+        payload = json.dumps({
+            "instruction": "Revise only target_paragraphs. Use context_before and context_after to preserve chapter or subject continuity.",
+            "context_before": context_before,
+            "target_paragraphs": batch,
+            "context_after": context_after,
+        }, ensure_ascii=False)
         data = extract_json(gemini_generate(model, payload))
         for item in data.get("items", []):
             if not isinstance(item, dict):
@@ -233,7 +255,14 @@ def review_paragraphs(paragraphs: List[str], model: str) -> List[Dict[str, Any]]
                 "reason": str(item.get("reason", "")).strip(),
                 "flags": [str(flag) for flag in flags],
             }
-    return [reviewed.get(i, {"id": i, "original": original, "revised": original, "reason": "No change returned by the model.", "flags": ["Please review manually because no model revision was returned."]}) for i, original in enumerate(paragraphs, start=1)]
+
+    return [reviewed.get(i, {
+        "id": i,
+        "original": original,
+        "revised": original,
+        "reason": "No change returned by the model.",
+        "flags": ["Please review manually because no model revision was returned."],
+    }) for i, original in enumerate(paragraphs, start=1)]
 
 
 def add_diff_paragraph(doc: Document, original: str, revised: str):
@@ -355,6 +384,8 @@ async def refine(
     flag: str = Form(""),
     decision: str = Form(...),
     comment: str = Form(""),
+    context_before: str = Form(""),
+    context_after: str = Form(""),
     model: str = Form("gemini-3.1-flash-lite"),
 ):
     if model not in ALLOWED_MODELS:
@@ -372,6 +403,8 @@ async def refine(
         "confirmation_question": flag,
         "user_response_type": decision,
         "user_comment": comment.strip(),
+        "context_before": context_before.strip(),
+        "context_after": context_after.strip(),
         "original_character_count": len(original),
     }, ensure_ascii=False)
     try:
