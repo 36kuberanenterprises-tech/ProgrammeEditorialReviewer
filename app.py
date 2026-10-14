@@ -124,6 +124,49 @@ def extract_text(filename: str, data: bytes) -> List[str]:
     raise HTTPException(status_code=400, detail="Supported files: DOCX, PDF, TXT and MD.")
 
 
+def extract_document_pages(filename: str, data: bytes) -> tuple[List[str], bool]:
+    """Extract page sized units without inventing page boundaries.
+    PDF pages are exact. DOCX only exposes explicit/manual page breaks reliably.
+    If a DOCX has no explicit page breaks, keep it as one continuous document unit.
+    """
+    ext = Path(filename).suffix.lower()
+    if ext == ".pdf":
+        reader = PdfReader(io.BytesIO(data))
+        pages: List[str] = []
+        for page in reader.pages:
+            raw = page.extract_text() or ""
+            lines = [ln.rstrip() for ln in raw.splitlines()]
+            text = "\n".join(lines).strip()
+            if text:
+                pages.append(text)
+        return pages, True
+
+    if ext == ".docx":
+        doc = Document(io.BytesIO(data))
+        pages: List[str] = []
+        current: List[str] = []
+        found_break = False
+        for p in doc.paragraphs:
+            txt = p.text.strip()
+            if txt:
+                current.append(txt)
+            xml = p._p.xml
+            has_page_break = 'w:type="page"' in xml or "w:lastRenderedPageBreak" in xml
+            if has_page_break and current:
+                pages.append("\n\n".join(current).strip())
+                current = []
+                found_break = True
+        if current:
+            pages.append("\n\n".join(current).strip())
+        return pages, found_break
+
+    if ext in {".txt", ".md"}:
+        text = data.decode("utf-8", errors="ignore").strip()
+        return ([text] if text else []), False
+
+    raise HTTPException(status_code=400, detail="Supported files: DOCX, PDF, TXT and MD.")
+
+
 def text_to_paragraphs(text: str) -> List[str]:
     text = (text or "").strip()
     if not text:
@@ -223,7 +266,7 @@ def gemini_generate(model: str, payload: str, system_prompt: str = SYSTEM_PROMPT
     return text
 
 
-def review_paragraphs(paragraphs: List[str], model: str, full_page_mode: bool = False) -> List[Dict[str, Any]]:
+def review_paragraphs(paragraphs: List[str], model: str, full_page_mode: bool = False, unit_type: str = "paragraph") -> List[Dict[str, Any]]:
     source_items = [{"id": i + 1, "text": p} for i, p in enumerate(paragraphs)]
     reviewed: Dict[int, Dict[str, Any]] = {}
 
@@ -240,7 +283,7 @@ def review_paragraphs(paragraphs: List[str], model: str, full_page_mode: bool = 
         ]
         instruction = "Revise only target_paragraphs. First perform the compulsory spelling, grammar, punctuation and sentence construction check on every target paragraph. Then use context_before and context_after to preserve chapter or subject continuity."
         if full_page_mode:
-            instruction = "This is FULL PAGE MODE. Treat the entire target text as one complete page. Correct spelling, grammar, punctuation, sentence construction, flow and consistency across the page as a whole. Preserve paragraph breaks, headings, sequence, place names, facts and approximate page length. Do not split the page into separate paragraph reviews."
+            instruction = "This is PAGE OR DOCUMENT MODE. Each target item is one complete page or one continuous document unit. Correct spelling, grammar, punctuation, sentence construction, flow and consistency within each item. Preserve internal paragraph breaks, headings, sequence, place names, facts and approximate length. Return one reviewed item for each target item. Do not create paragraph level reviews or paragraph labels."
         payload = json.dumps({
             "instruction": instruction,
             "full_page_mode": full_page_mode,
@@ -267,6 +310,7 @@ def review_paragraphs(paragraphs: List[str], model: str, full_page_mode: bool = 
                 "revised": str(item.get("revised", paragraphs[idx - 1])).strip(),
                 "reason": str(item.get("reason", "")).strip(),
                 "flags": [str(flag) for flag in flags],
+                "unit_type": unit_type,
             }
 
     return [reviewed.get(i, {
@@ -275,6 +319,7 @@ def review_paragraphs(paragraphs: List[str], model: str, full_page_mode: bool = 
         "revised": original,
         "reason": "No change returned by the model.",
         "flags": ["Please review manually because no model revision was returned."],
+        "unit_type": unit_type,
     }) for i, original in enumerate(paragraphs, start=1)]
 
 
@@ -316,8 +361,12 @@ def build_review_doc(results: List[Dict[str, Any]], title: str) -> bytes:
     r = legend.add_run("Blue text")
     r.font.color.rgb = RGBColor(0, 102, 204)
     legend.add_run(" means addition or replacement.")
-    for item in results:
-        doc.add_heading(f"Paragraph {item['id']}", level=2)
+    for pos, item in enumerate(results):
+        unit_type = item.get("unit_type", "paragraph")
+        if unit_type == "page":
+            doc.add_heading(f"Page {item['id']}", level=2)
+        elif unit_type == "paragraph":
+            doc.add_heading(f"Paragraph {item['id']}", level=2)
         add_diff_paragraph(doc, item["original"], item["revised"])
         if item["reason"]:
             p = doc.add_paragraph()
@@ -329,6 +378,8 @@ def build_review_doc(results: List[Dict[str, Any]], title: str) -> bytes:
             rr.bold = True
             rr.font.color.rgb = RGBColor(192, 0, 0)
             p.add_run(str(flag))
+        if unit_type == "page" and pos < len(results) - 1:
+            doc.add_page_break()
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
@@ -337,8 +388,10 @@ def build_review_doc(results: List[Dict[str, Any]], title: str) -> bytes:
 def build_clean_doc(results: List[Dict[str, Any]], title: str) -> bytes:
     doc = Document()
     doc.add_heading(title, level=1)
-    for item in results:
+    for pos, item in enumerate(results):
         doc.add_paragraph(item["revised"])
+        if item.get("unit_type") == "page" and pos < len(results) - 1:
+            doc.add_page_break()
     out = io.BytesIO()
     doc.save(out)
     return out.getvalue()
@@ -366,17 +419,41 @@ async def review(
 
     full_page_mode = str(page_mode).lower() == "true"
     typed_text = (text or "").strip()
+    review_type = "paragraphs"
+    page_boundaries_known = False
+    unit_type = "paragraph"
+
     if typed_text:
         if len(typed_text) > 120000:
             raise HTTPException(status_code=400, detail="Pasted text is too long. Please review it in smaller sections.")
-        paragraphs = [typed_text] if full_page_mode else text_to_paragraphs(typed_text)
-        source_name = "Pasted Page" if full_page_mode else "Pasted Text"
+        if full_page_mode:
+            paragraphs = [typed_text]
+            source_name = "Pasted Page"
+            review_type = "pages"
+            page_boundaries_known = True
+            unit_type = "page"
+        else:
+            paragraphs = text_to_paragraphs(typed_text)
+            source_name = "Pasted Text"
     elif file and file.filename:
         data = await file.read()
         if len(data) > 15 * 1024 * 1024:
             raise HTTPException(status_code=400, detail="File is too large. Maximum size is 15 MB.")
-        extracted = extract_text(file.filename, data)
-        paragraphs = ["\n\n".join(extracted)] if full_page_mode else extracted
+
+        ext = Path(file.filename).suffix.lower()
+        if ext in {".pdf", ".docx"}:
+            paragraphs, page_boundaries_known = extract_document_pages(file.filename, data)
+            full_page_mode = True
+            review_type = "pages" if page_boundaries_known else "document"
+            unit_type = "page" if page_boundaries_known else "document"
+        elif full_page_mode:
+            extracted = extract_text(file.filename, data)
+            paragraphs = ["\n\n".join(extracted)] if extracted else []
+            review_type = "pages"
+            page_boundaries_known = True
+            unit_type = "page"
+        else:
+            paragraphs = extract_text(file.filename, data)
         source_name = file.filename
     else:
         raise HTTPException(status_code=400, detail="Upload a document or paste/type text to review.")
@@ -384,7 +461,7 @@ async def review(
     if not paragraphs:
         raise HTTPException(status_code=400, detail="No readable text was found.")
     try:
-        results = review_paragraphs(paragraphs, model, full_page_mode=full_page_mode)
+        results = review_paragraphs(paragraphs, model, full_page_mode=full_page_mode, unit_type=unit_type)
     except HTTPException:
         raise
     except Exception as exc:
@@ -394,7 +471,8 @@ async def review(
         "count": len(results),
         "items": results,
         "provider": "Gemini free tier",
-        "review_type": "page" if full_page_mode else "paragraphs",
+        "review_type": review_type,
+        "page_boundaries_known": page_boundaries_known,
     }
 
 
@@ -408,6 +486,7 @@ async def refine(
     comment: str = Form(""),
     context_before: str = Form(""),
     context_after: str = Form(""),
+    unit_type: str = Form("paragraph"),
     model: str = Form("gemini-3.1-flash-lite"),
 ):
     if model not in ALLOWED_MODELS:
@@ -445,6 +524,7 @@ async def refine(
         "revised": str(data.get("revised", revised)).strip(),
         "reason": str(data.get("reason", "Updated based on your confirmation.")).strip(),
         "flags": [str(x) for x in flags],
+        "unit_type": unit_type if unit_type in {"paragraph", "page", "document"} else "paragraph",
     }
 
 
