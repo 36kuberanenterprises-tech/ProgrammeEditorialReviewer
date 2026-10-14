@@ -148,14 +148,32 @@ def extract_document_pages(filename: str, data: bytes) -> tuple[List[str], bool]
         found_break = False
         for p in doc.paragraphs:
             txt = p.text.strip()
+
+            # In many designed Word files, each new page begins with a numbered
+            # message or section heading even when Word does not expose an
+            # automatic page break in the DOCX XML. Treat only these strong
+            # page-start headings as a boundary instead of splitting every
+            # paragraph.
+            heading_starts_new_page = bool(
+                txt
+                and current
+                and re.match(r"^\s*\d+\.\s+(Message|Section|Chapter)\b", txt, flags=re.I)
+            )
+            if heading_starts_new_page:
+                pages.append("\n\n".join(current).strip())
+                current = []
+                found_break = True
+
             if txt:
                 current.append(txt)
+
             xml = p._p.xml
             has_page_break = 'w:type="page"' in xml or "w:lastRenderedPageBreak" in xml
             if has_page_break and current:
                 pages.append("\n\n".join(current).strip())
                 current = []
                 found_break = True
+
         if current:
             pages.append("\n\n".join(current).strip())
         return pages, found_break
