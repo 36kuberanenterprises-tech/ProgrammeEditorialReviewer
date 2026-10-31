@@ -42,6 +42,8 @@ The word count includes Unicode letter and numeric sequences. The suggested star
 
 Use a server environment variable named `GEMINI_API_KEY`, without putting API keys in GitHub or the browser.
 
+For a privately used deployment, set `EDITOR_ACCESS_CODE` as an additional Render environment variable. If set, AI proofreading and translation requests require users to enter that code on the webpage. Do not commit it to the repository. Without the variable, the existing public access behaviour remains unchanged. This is a simple access gate rather than a full user management system.
+
 ```bash
 pip install -r requirements.txt
 uvicorn app:app --host 0.0.0.0 --port 8000
