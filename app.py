@@ -2,12 +2,13 @@ import io
 import os
 import re
 import json
+import hmac
 import difflib
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import httpx
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
@@ -420,9 +421,19 @@ def build_clean_doc(results: List[Dict[str, Any]], title: str) -> bytes:
     return out.getvalue()
 
 
+def require_access_code(access_code: Optional[str] = Header(None, alias="X-Editor-Code")) -> None:
+    """Optional deployment protection for endpoints that invoke paid AI calls."""
+    expected = os.getenv("EDITOR_ACCESS_CODE", "").strip()
+    if expected and not hmac.compare_digest((access_code or "").encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="App access code is missing or incorrect.")
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "languages": LANGUAGES})
+    return templates.TemplateResponse("index.html", {
+        "request": request, "languages": LANGUAGES,
+        "requires_access": bool(os.getenv("EDITOR_ACCESS_CODE", "").strip()),
+    })
 
 
 @app.get("/health")
@@ -436,6 +447,7 @@ async def review(
     text: str = Form(""),
     page_mode: str = Form("false"),
     model: str = Form("gemini-3.1-flash-lite"),
+    _auth: None = Depends(require_access_code),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
@@ -511,6 +523,7 @@ async def refine(
     context_after: str = Form(""),
     unit_type: str = Form("paragraph"),
     model: str = Form("gemini-3.1-flash-lite"),
+    _auth: None = Depends(require_access_code),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
@@ -551,18 +564,37 @@ async def refine(
     }
 
 
+def _safe_export_name(filename: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]", "_", Path(filename or "document").stem)[:70] or "document"
+
+
+def _editorial_download_payload(payload: str) -> list[dict]:
+    if len(payload) > 3_000_000:
+        raise HTTPException(status_code=400, detail="Editorial review is too large to export.")
+    try:
+        result = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid review data.") from exc
+    if not isinstance(result, list) or len(result) > 2500 or any(
+        not isinstance(item, dict) or not isinstance(item.get("revised"), str) or
+        not isinstance(item.get("original"), str) for item in result
+    ):
+        raise HTTPException(status_code=400, detail="Invalid review data structure.")
+    return result
+
+
 @app.post("/download/reviewed")
 async def download_reviewed(payload: str = Form(...), filename: str = Form("document.docx")):
-    results = json.loads(payload)
+    results = _editorial_download_payload(payload)
     data = build_review_doc(results, filename)
-    stem = Path(filename).stem if filename else "pasted_text"
+    stem = _safe_export_name(filename)
     return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{stem}_editorial_review.docx"'})
 
 
 @app.post("/download/clean")
 async def download_clean(payload: str = Form(...), filename: str = Form("document.docx")):
-    results = json.loads(payload)
-    stem = Path(filename).stem if filename else "pasted_text"
+    results = _editorial_download_payload(payload)
+    stem = _safe_export_name(filename)
     data = build_clean_doc(results, f"{stem} Revised Copy")
     return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{stem}_clean_revised.docx"'})
 
@@ -575,10 +607,39 @@ def _translation_languages(source_language: str, target_language: str) -> tuple[
     return LANGUAGES[source_language], LANGUAGES[target_language]
 
 
+AUDIENCES = {
+    "natural": "Natural, clear language for everyday readers.",
+    "education": "Age appropriate language for school books and educational resources. Avoid adding examples.",
+    "ngo": "Simple, credible programme language for NGO, CSR and development sector reports.",
+    "formal": "Formal but readable institutional and official document language.",
+}
+
+def _translation_options(audience: str, glossary: str) -> tuple[str, list[dict[str, str]]]:
+    if audience not in AUDIENCES:
+        raise HTTPException(status_code=400, detail="Select a valid writing style.")
+    if len(glossary) > 3000:
+        raise HTTPException(status_code=400, detail="Terminology list must be within 3,000 characters.")
+    terminology = []
+    for line in glossary.splitlines():
+        if not line.strip():
+            continue
+        if "=" not in line:
+            raise HTTPException(status_code=400, detail="Each terminology line must use source term = target term.")
+        source_term, target_term = (piece.strip() for piece in line.split("=", 1))
+        if not source_term or not target_term or len(source_term) > 120 or len(target_term) > 120:
+            raise HTTPException(status_code=400, detail="Check terminology lines and keep terms under 120 characters.")
+        terminology.append({"source": source_term, "target": target_term})
+    if len(terminology) > 30:
+        raise HTTPException(status_code=400, detail="A maximum of 30 preferred terminology entries is supported.")
+    return AUDIENCES[audience], terminology
+
+
 def _translation_batch(
-    items: List[Dict[str, Any]], model: str, source_language: str = "hi", target_language: str = "gu"
+    items: List[Dict[str, Any]], model: str, source_language: str = "hi", target_language: str = "gu",
+    audience: str = "natural", glossary: str = "",
 ) -> List[Dict[str, Any]]:
     source_name, target_name = _translation_languages(source_language, target_language)
+    audience_instruction, terminology = _translation_options(audience, glossary)
     completed: List[Dict[str, Any]] = []
     batches = chunks([{"id": item["id"], "text": item["original"]} for item in items], max_chars=4500)
     for batch in batches:
@@ -586,6 +647,8 @@ def _translation_batch(
             "task": f"Translate faithfully from {source_name} into {target_name} and proofread.",
             "source_language": source_name,
             "target_language": target_name,
+            "writing_style": audience_instruction,
+            "preferred_terminology": terminology,
             "passages": [{"id": item["id"], "source_text": item["text"]} for item in batch],
         }, ensure_ascii=False)
         result = extract_json(gemini_generate(model, payload, TRANSLATION_PROMPT))
@@ -677,14 +740,18 @@ async def translation_translate(
     model: str = Form("gemini-3.1-flash-lite"),
     source_language: str = Form("hi"),
     target_language: str = Form("gu"),
+    audience: str = Form("natural"),
+    glossary: str = Form(""),
+    _auth: None = Depends(require_access_code),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
     source_name, target_name = _translation_languages(source_language, target_language)
+    _translation_options(audience, glossary)
     filename, data, passages = await _translation_input(file, text)
     source_words = sum(count_source_words(item["original"]) for item in passages)
     try:
-        items = _translation_batch(passages, model, source_language, target_language)
+        items = _translation_batch(passages, model, source_language, target_language, audience, glossary)
     except HTTPException:
         raise
     except Exception as exc:
@@ -697,6 +764,7 @@ async def translation_translate(
         "target_language": target_language,
         "source_name": source_name,
         "target_name": target_name,
+        "writing_style": audience,
         "source_words": source_words,
         "items": items,
         "source_sha256": checksum(data) if data is not None else "",
@@ -714,10 +782,14 @@ async def translation_revise(
     model: str = Form("gemini-3.1-flash-lite"),
     source_language: str = Form("hi"),
     target_language: str = Form("gu"),
+    audience: str = Form("natural"),
+    glossary: str = Form(""),
+    _auth: None = Depends(require_access_code),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
     source_name, target_name = _translation_languages(source_language, target_language)
+    audience_instruction, terminology = _translation_options(audience, glossary)
     if not (1 <= revision_round <= 4):
         raise HTTPException(status_code=400, detail="Revision rounds must be between 1 and 4.")
     if not feedback.strip():
@@ -727,6 +799,8 @@ async def translation_revise(
     payload = json.dumps({
         "source_language": source_name,
         "target_language": target_name,
+        "writing_style": audience_instruction,
+        "preferred_terminology": terminology,
         "source_text": original,
         "current_translation": translated,
         "human_reviewer_feedback": feedback.strip(),
@@ -766,8 +840,10 @@ async def translation_download(
         items = json.loads(payload)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid translation data.") from exc
+    if not isinstance(items, list) or not items:
+        raise HTTPException(status_code=400, detail="No translation passages are available to export.")
 
-    if stage == "final" and (not isinstance(items, list) or any(not isinstance(item, dict) or not item.get("reviewed") for item in items)):
+    if stage == "final" and any(not isinstance(item, dict) or not item.get("reviewed") for item in items):
         raise HTTPException(status_code=400, detail="All translation passages must be verified by a human translator before final export.")
 
     original_bytes = None
@@ -778,7 +854,7 @@ async def translation_download(
         if not source_sha256 or checksum(original_bytes) != source_sha256:
             raise HTTPException(status_code=400, detail="Original file verification failed. Upload and translate it again.")
     try:
-        translated_data = build_translation_docx(items, filename, original_file=original_bytes)
+        translated_data = build_translation_docx(items, filename, original_file=original_bytes, target_language=target_language)
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     stem = re.sub(r"[^A-Za-z0-9_]", "_", Path(filename).stem)[:70] or "translation"

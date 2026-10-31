@@ -15,6 +15,8 @@ from typing import Any
 from docx import Document
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from pypdf import PdfReader
 
 
@@ -225,10 +227,20 @@ def _replace_paragraph_text(paragraph: Paragraph, new_text: str) -> None:
         paragraph.add_run(new_text)
 
 
+def _mark_rtl(paragraph: Paragraph) -> None:
+    properties = paragraph._p.get_or_add_pPr()
+    bidi = properties.find(qn("w:bidi"))
+    if bidi is None:
+        bidi = OxmlElement("w:bidi")
+        properties.append(bidi)
+    bidi.set(qn("w:val"), "1")
+
+
 def build_translation_docx(
     items: list[dict[str, Any]],
     source_filename: str,
     original_file: bytes | None = None,
+    target_language: str = "gu",
 ) -> bytes:
     """Build a translated DOCX. An uploaded DOCX is edited in place in memory."""
     if not isinstance(items, list) or not items:
@@ -250,12 +262,16 @@ def build_translation_docx(
             if item.get("original", "").strip() != paragraph.text.strip():
                 raise ValueError("The source content has changed. Please translate this file again.")
             _replace_paragraph_text(paragraph, str(item["translated"]))
+            if target_language in {"ur", "sd", "ks"}:
+                _mark_rtl(paragraph)
     else:
         doc = Document()
         for index, item in enumerate(items):
             if index > 0 and item.get("page_break_before"):
                 doc.add_page_break()
-            doc.add_paragraph(str(item["translated"]))
+            paragraph = doc.add_paragraph(str(item["translated"]))
+            if target_language in {"ur", "sd", "ks"}:
+                _mark_rtl(paragraph)
     output = io.BytesIO()
     doc.save(output)
     return output.getvalue()
@@ -279,4 +295,8 @@ def translation_needs_review(source: str, target: str, target_language: str = "g
     expected_script = LANGUAGE_SCRIPTS.get(target_language)
     if letters >= 4 and expected_script and not re.search(expected_script, target):
         flags.append(f"{name} script was not detected. Please verify this passage.")
+    # Preserve quantitative evidence and amounts. A human must assess differences.
+    numeric_pattern = r"\d+(?:[.,]\d+)*"
+    if re.findall(numeric_pattern, source) != re.findall(numeric_pattern, target):
+        flags.append("Numbers or amounts differ from the source. Please verify them.")
     return flags
