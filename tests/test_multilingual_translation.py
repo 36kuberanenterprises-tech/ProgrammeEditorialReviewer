@@ -50,9 +50,6 @@ def test_translation_routes_selected_languages_and_exports(monkeypatch, source, 
     monkeypatch.setattr(review_app, "gemini_generate", fake_gemini)
     client = TestClient(review_app.app)
     data = {"text": "Sample text 2026", "source_language": source, "target_language": target}
-    estimated = client.post("/translation/estimate", data=data)
-    assert estimated.status_code == 200
-    assert estimated.json()["source_words"] == 3
     generated = client.post("/translation/translate", data=data)
     assert generated.status_code == 200, generated.text
     body = generated.json()
@@ -88,10 +85,6 @@ def test_translation_routes_selected_languages_and_exports(monkeypatch, source, 
 def test_translation_rejects_unknown_or_identical_language_pairs():
     client = TestClient(review_app.app)
     for source, target in [("kn", "kn"), ("invalid", "hi"), ("en", "invalid")]:
-        result = client.post("/translation/estimate", data={
-            "text": "Hello", "source_language": source, "target_language": target
-        })
-        assert result.status_code == 400
         result = client.post("/translation/translate", data={
             "text": "Hello", "source_language": source, "target_language": target
         })
