@@ -122,3 +122,23 @@ def test_download_endpoints_reject_invalid_review_data():
 def test_translation_download_rejects_empty_project():
     result = TestClient(review_app.app).post("/translation/download", data={"payload": "[]"})
     assert result.status_code == 400
+
+
+def test_optional_access_code_protects_expensive_ai_endpoints(monkeypatch):
+    monkeypatch.setenv("EDITOR_ACCESS_CODE", "private-review-code")
+    client = TestClient(review_app.app)
+    for endpoint, data in [
+        ("/translation/translate", {"text": "Hello", "source_language": "en", "target_language": "hi"}),
+        ("/review", {"text": "A simple sentence."}),
+        ("/translation/revise", {"original": "a", "translated": "b", "feedback": "c", "revision_round": 1}),
+    ]:
+        denied = client.post(endpoint, data=data)
+        assert denied.status_code == 401, denied.text
+    allowed = client.get("/")
+    assert allowed.status_code == 200
+    assert 'id="appAccessCode"' in allowed.text
+    # Access code is checked before model access and input validation.
+    invalid = client.post("/translation/translate",
+                          headers={"X-Editor-Code": "private-review-code"},
+                          data={"text": "Hello", "source_language": "en", "target_language": "en"})
+    assert invalid.status_code == 400
