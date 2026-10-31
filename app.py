@@ -14,6 +14,11 @@ from fastapi.requests import Request
 from docx import Document
 from docx.shared import RGBColor
 from pypdf import PdfReader
+from translation_service import (
+    TRANSLATION_PROMPT, REVISION_PROMPT, count_source_words,
+    extract_translation_segments, build_translation_docx, checksum,
+    translation_needs_review,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 app = FastAPI(title="Programme Editorial Reviewer")
@@ -560,3 +565,187 @@ async def download_clean(payload: str = Form(...), filename: str = Form("documen
     stem = Path(filename).stem if filename else "pasted_text"
     data = build_clean_doc(results, f"{stem} Revised Copy")
     return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{stem}_clean_revised.docx"'})
+
+# The translation service is a separate workflow. Editorial review behaviour above is unchanged.
+def _translation_batch(items: List[Dict[str, Any]], model: str) -> List[Dict[str, Any]]:
+    completed: List[Dict[str, Any]] = []
+    batches = chunks([{"id": item["id"], "text": item["original"]} for item in items], max_chars=4500)
+    for batch in batches:
+        payload = json.dumps({
+            "task": "Translate each Hindi passage into Gujarati and proofread the result.",
+            "passages": [{"id": item["id"], "source_hindi": item["text"]} for item in batch],
+        }, ensure_ascii=False)
+        result = extract_json(gemini_generate(model, payload, TRANSLATION_PROMPT))
+        translated = {}
+        for item in result.get("items", []):
+            if isinstance(item, dict):
+                try:
+                    translated[int(item["id"])] = item
+                except (ValueError, KeyError, TypeError):
+                    continue
+        for item in batch:
+            original = item["text"]
+            target_obj = translated.get(item["id"], {})
+            target = str(target_obj.get("translated", "") or "").strip()
+            flags = target_obj.get("flags", []) or []
+            if not isinstance(flags, list):
+                flags = [str(flags)]
+            flags = [str(flag) for flag in flags if str(flag).strip()]
+            flags.extend(translation_needs_review(original, target))
+            completed.append({
+                "id": item["id"],
+                "original": original,
+                "translated": target,
+                "flags": list(dict.fromkeys(flags)),
+                "reviewed": False,
+            })
+    return completed
+
+
+async def _translation_input(file: Optional[UploadFile], text: str) -> tuple[str, bytes | None, list[dict]]:
+    text = (text or "").strip()
+    if text:
+        if len(text) > 120000:
+            raise HTTPException(status_code=400, detail="Maximum pasted text length is 120,000 characters. Divide a larger document into sections.")
+        filename, data = "Pasted_Hindi_Text.txt", None
+    elif file and file.filename:
+        filename = Path(file.filename).name
+        if Path(filename).suffix.lower() not in {".docx", ".pdf", ".txt", ".md"}:
+            raise HTTPException(status_code=400, detail="Upload a DOCX, PDF, TXT or MD file.")
+        data = await file.read()
+        if len(data) > 15 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="Maximum file size is 15 MB.")
+        if not data:
+            raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+    else:
+        raise HTTPException(status_code=400, detail="Paste Hindi text or upload a document.")
+
+    try:
+        items = extract_translation_segments(filename, data=data, text=text)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read source text: {exc}") from exc
+    if not items:
+        raise HTTPException(status_code=400, detail="No readable text found. Scanned image PDFs need OCR before translation.")
+    if sum(len(item["original"]) for item in items) > 120000:
+        raise HTTPException(status_code=400, detail="This document is too long for one request. Please divide it into smaller documents.")
+    return filename, data, items
+
+
+@app.post("/translation/estimate")
+async def translation_estimate(
+    file: Optional[UploadFile] = File(None),
+    text: str = Form(""),
+):
+    filename, data, items = await _translation_input(file, text)
+    word_count = sum(count_source_words(item["original"]) for item in items)
+    return {
+        "filename": filename,
+        "source_words": word_count,
+        "passages": len(items),
+        "source_sha256": checksum(data) if data is not None else "",
+        "note": "Count includes numeric tokens and excludes punctuation. Confirm the agreed word counting method with the client.",
+    }
+
+
+@app.post("/translation/translate")
+async def translation_translate(
+    file: Optional[UploadFile] = File(None),
+    text: str = Form(""),
+    model: str = Form("gemini-3.1-flash-lite"),
+):
+    if model not in ALLOWED_MODELS:
+        raise HTTPException(status_code=400, detail="Unsupported model selection.")
+    filename, data, passages = await _translation_input(file, text)
+    source_words = sum(count_source_words(item["original"]) for item in passages)
+    try:
+        items = _translation_batch(passages, model)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Translation could not be completed: {exc}") from exc
+    for result, passage in zip(items, passages):
+        result["page_break_before"] = passage["page_break_before"]
+    return {
+        "filename": filename,
+        "source_words": source_words,
+        "items": items,
+        "source_sha256": checksum(data) if data is not None else "",
+        "review_required": True,
+        "provider": "Gemini assisted draft. Human Gujarati proofreading required.",
+    }
+
+
+@app.post("/translation/revise")
+async def translation_revise(
+    original: str = Form(...),
+    translated: str = Form(...),
+    feedback: str = Form(...),
+    revision_round: int = Form(...),
+    model: str = Form("gemini-3.1-flash-lite"),
+):
+    if model not in ALLOWED_MODELS:
+        raise HTTPException(status_code=400, detail="Unsupported model selection.")
+    if not (1 <= revision_round <= 4):
+        raise HTTPException(status_code=400, detail="Revision rounds must be between 1 and 4.")
+    if not feedback.strip():
+        raise HTTPException(status_code=400, detail="Provide specific reviewer feedback.")
+    if len(original) > 10000 or len(translated) > 15000 or len(feedback) > 3000:
+        raise HTTPException(status_code=400, detail="A revision passage or feedback is too long.")
+    payload = json.dumps({
+        "hindi_source": original,
+        "current_gujarati_translation": translated,
+        "human_reviewer_feedback": feedback.strip(),
+        "revision_round": revision_round,
+    }, ensure_ascii=False)
+    try:
+        revised = extract_json(gemini_generate(model, payload, REVISION_PROMPT))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not revise translation: {exc}") from exc
+    target = str(revised.get("translated", "") or "").strip()
+    flags = revised.get("flags", []) or []
+    if not isinstance(flags, list):
+        flags = [str(flags)]
+    flags = [str(f) for f in flags if str(f).strip()]
+    flags.extend(translation_needs_review(original, target))
+    return {"translated": target, "flags": list(dict.fromkeys(flags)), "revision_round": revision_round, "reviewed": False}
+
+
+@app.post("/translation/download")
+async def translation_download(
+    payload: str = Form(...),
+    filename: str = Form("Pasted_Hindi_Text.txt"),
+    source_sha256: str = Form(""),
+    stage: str = Form("working"),
+    file: Optional[UploadFile] = File(None),
+):
+    if stage not in {"working", "final"}:
+        raise HTTPException(status_code=400, detail="Invalid translation export stage.")
+    if len(payload) > 3_000_000:
+        raise HTTPException(status_code=400, detail="Document exceeds maximum download payload size.")
+    try:
+        items = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Invalid translation data.") from exc
+
+    if stage == "final" and (not isinstance(items, list) or any(not isinstance(item, dict) or not item.get("reviewed") for item in items)):
+        raise HTTPException(status_code=400, detail="All translation passages must be verified by a human translator before final export.")
+
+    original_bytes = None
+    if Path(filename).suffix.lower() == ".docx":
+        if not file:
+            raise HTTPException(status_code=400, detail="The original Word document is required to preserve its structure.")
+        original_bytes = await file.read()
+        if not source_sha256 or checksum(original_bytes) != source_sha256:
+            raise HTTPException(status_code=400, detail="Original file verification failed. Upload and translate it again.")
+    try:
+        translated_data = build_translation_docx(items, filename, original_file=original_bytes)
+    except (ValueError, KeyError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    stem = re.sub(r"[^A-Za-z0-9_]", "_", Path(filename).stem)[:70] or "translation"
+    return StreamingResponse(
+        io.BytesIO(translated_data),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": f'attachment; filename="{stem}_Gujarati_{stage}.docx"'},
+    )
