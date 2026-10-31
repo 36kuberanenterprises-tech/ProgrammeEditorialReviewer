@@ -58,11 +58,11 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
     </div>
 
     <form id="reviewForm" class="row">
-      <div class="field" id="fileField"><label id="fileLabel">Document</label><input id="file" type="file" accept=".docx,.pdf,.txt,.md"></div>
+      <div class="field" id="fileField"><label id="fileLabel">Document or image</label><input id="file" type="file" accept=".docx,.pdf,.txt,.md,.jpg,.jpeg,.jfif,.png,.webp,.gif,.bmp,.tif,.tiff,.heic,.heif,.avif,image/*"><button type="button" class="soft" id="readEditorImage" style="margin-top:9px">Read image or scanned PDF text</button></div>
       <div class="field"><label>Model</label><select id="model"><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite Free</option><option value="gemini-3.8-flash">Gemini 3.8 Flash Free</option></select></div>
       <button id="go" type="submit">Review</button>
     </form>
-    <div class="note">PDF files are reviewed page by page. Word files use their stored page breaks where available; if Word does not contain reliable page break information, the content is reviewed as one continuous document rather than creating artificial pages. No paragraph numbers are shown for uploaded PDF or Word files. For designed pages, the reviewer aims to keep revised text within about 92 to 108 percent of the original length.</div>
+    <div class="note">Upload Word, PDF, text files, photographs or screenshots. Image formats include JPG, PNG, WEBP, HEIC, AVIF, GIF, BMP and TIFF. Scanned PDFs and images are read with Gemini vision. Use Read image or scanned PDF text if you want to check and correct the extracted source before reviewing it. AI can misread handwriting or blurred images. Images and scanned PDFs have a 15 MB file limit, with up to 12 pages or frames. The original layout of scanned documents is not recreated in Word output.</div>
     <div id="status" class="status"></div>
     <div id="actions" class="actions">
       <button id="downloadReviewed" class="secondary" onclick="downloadDoc('reviewed',this)">Download marked review</button>
@@ -107,17 +107,11 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
       <textarea id="translationText" placeholder="Type or paste your source language text here..."></textarea>
     </div>
     <form id="translationForm" class="row" style="margin-top:12px">
-      <div class="field"><label for="translationFile">Source document</label><input id="translationFile" type="file" accept=".docx,.pdf,.txt,.md"></div>
+      <div class="field"><label for="translationFile">Source document or image</label><input id="translationFile" type="file" accept=".docx,.pdf,.txt,.md,.jpg,.jpeg,.jfif,.png,.webp,.gif,.bmp,.tif,.tiff,.heic,.heif,.avif,image/*"><button type="button" class="soft" id="translationReadImage" style="margin-top:9px">Read text from image or PDF</button></div>
       <div class="field"><label for="translationModel">Translation model</label><select id="translationModel"><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option><option value="gemini-3.8-flash">Gemini 3.8 Flash</option></select></div>
       <button type="submit" id="translateGo">Translate</button>
     </form>
-    <div class="translation-summary">
-      <div class="field"><label for="translationRate">Indicative rate per source word, INR</label><input id="translationRate" type="number" min="0" max="100" step="0.05" value="1.80"></div>
-      <div><strong id="sourceWordCount">0 source words</strong><div class="translation-small">Numbers included in word count</div></div>
-      <div><strong id="translationQuotation">Estimated quotation: ₹0.00</strong><div class="translation-small">GST, if applicable, not included</div></div>
-      <button type="button" id="estimateTranslation" class="soft">Count words and estimate</button>
-    </div>
-    <div class="note">The ₹1.80 rate is only a starting estimate and must be adjusted for each language pair, complexity and reviewer cost. Uploaded DOCX files retain paragraphs and tables where possible, but complex formatting and fonts need checking. PDFs become new Word documents; scanned PDFs require OCR first. Submitted text is sent to the configured Gemini service, so confirm confidentiality requirements before uploading sensitive material.</div>
+    <div class="note">Upload a document or clear photo and select Translate to prepare the working copy. For images and scans, select Read text from image or PDF first if you want to check and correct the extracted wording before translation. Supported formats include JPG, PNG, WEBP, HEIC, AVIF, GIF, BMP and TIFF. Scanned PDFs can also be read. File limit is 15 MB and scanned documents are limited to 12 pages. Extraction uses Gemini vision and needs human checking. Submitted material is sent to Gemini, so confirm confidentiality permissions before uploading.</div>
     <div id="translationStatus" class="status" role="status" aria-live="polite"></div>
     <div id="translationProgress" class="translation-small"></div>
     <div class="translation-utilities" id="translationUtilities" style="display:none">
@@ -160,6 +154,22 @@ function setMode(next){
   fileMode.classList.toggle('active',mode==='file');textMode.classList.toggle('active',isText);pageMode.classList.toggle('active',isPage);statusBox.style.display='none';
 }
 fileMode.onclick=()=>setMode('file');textMode.onclick=()=>setMode('text');pageMode.onclick=()=>setMode('page');
+document.getElementById('readEditorImage').addEventListener('click', async function(){
+  const file=document.getElementById('file').files[0];
+  if(!file){status('Select an image or scanned PDF first.',true);return}
+  const button=this;button.disabled=true;status('Reading the uploaded image. Checking extracted text before review is recommended.');
+  try{
+    const fd=new FormData();fd.append('file',file);fd.append('model',document.getElementById('model').value);
+    const response=await fetch('/extract/image',{method:'POST',body:fd,headers:editorAccessHeaders()});
+    const data=await response.json();
+    if(!response.ok)throw new Error(data.detail||'Unable to read the image.');
+    setMode('page');
+    pageInput.value=data.text;
+    document.getElementById('pageCharCount').textContent=data.text.length+' characters';
+    status('Image text extracted. Check names, numbers and spelling against the original, correct the text above, then click Review.');
+  }catch(err){status(err.message,true)}finally{button.disabled=false}
+});
+
 textInput.addEventListener('input',()=>document.getElementById('charCount').textContent=textInput.value.length+' characters');
 pageInput.addEventListener('input',()=>document.getElementById('pageCharCount').textContent=pageInput.value.length+' characters');
 function tokenizeKeepBreaks(s){
@@ -253,7 +263,6 @@ function languagePair(){return {source:sourceLanguageSelect.value,target:targetL
 let translationItems = [];
 let translationFilename = 'Pasted_Source_Text.txt';
 let translationSha = '';
-let translationSourceWords = 0;
 let translationSourceFile = null;
 let translationPair = null;
 let translationRequestVersion = 0;
@@ -269,15 +278,9 @@ function tStatus(message, isError){
   box.className = 'status' + (isError ? ' error' : '');
   box.textContent = message;
 }
-function quoteUpdate(){
-  const raw=document.getElementById('translationRate').value;
-  const rate = Number(raw);
-  document.getElementById('sourceWordCount').textContent = translationSourceWords.toLocaleString('en-IN') + ' ' + languageName(sourceLanguageSelect) + ' source words';
-  document.getElementById('translationQuotation').textContent = raw && Number.isFinite(rate) && rate>=0 ? 'Estimated quotation: ₹'+(translationSourceWords*rate).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : 'Enter a rate to estimate the quotation';
-}
 function clearTranslationOutput(){
   translationRequestVersion++;
-  translationItems=[];translationSourceWords=0;translationSha='';translationSourceFile=null;translationPair=null;
+  translationItems=[];translationSha='';translationSourceFile=null;translationPair=null;
   document.getElementById('translationResults').replaceChildren();
   document.getElementById('translationProgress').textContent='';
   document.getElementById('translationActions').style.display='none';
@@ -286,17 +289,13 @@ function clearTranslationOutput(){
   document.getElementById('translationOriginalAgain').value='';
   document.getElementById('translationStatus').style.display='none';
   setSourceLock(false);
-  quoteUpdate();
 }
-document.getElementById('translationRate').addEventListener('input', quoteUpdate);
 function changedLanguage(){
   if(translationItems.length && !window.confirm('Changing languages starts a new translation and discards the current review. Save your progress first if needed. Continue?')){
     sourceLanguageSelect.value=translationPair.source;
     targetLanguageSelect.value=translationPair.target;
     return;
   }
-  const pair=languagePair();
-  document.getElementById('translationRate').value = pair.source==='hi' && pair.target==='gu' ? '1.80' : '';
   clearTranslationOutput();
 }
 sourceLanguageSelect.addEventListener('change',changedLanguage);
@@ -322,7 +321,6 @@ document.getElementById('swapTranslationLanguages').addEventListener('click',fun
   const previous=sourceLanguageSelect.value;
   sourceLanguageSelect.value=targetLanguageSelect.value;
   targetLanguageSelect.value=previous;
-  document.getElementById('translationRate').value=sourceLanguageSelect.value==='hi' && targetLanguageSelect.value==='gu'?'1.80':'';
   clearTranslationOutput();
 });
 function sourceFormData(withModel){
@@ -350,19 +348,22 @@ async function requestJson(endpoint, data){
   if(!response.ok)throw new Error(typeof result.detail === 'string' ? result.detail : 'Server request failed.');
   return result;
 }
-document.getElementById('estimateTranslation').addEventListener('click',async function(){
-  const button = this;button.disabled = true;
-  const pair=languagePair(),requestVersion=translationRequestVersion;
-  tStatus('Counting ' + pair.sourceName + ' source words...');
+document.getElementById('translationReadImage').addEventListener('click',async function(){
+  const file=document.getElementById('translationFile').files[0];
+  if(!file){tStatus('Choose an image or PDF first.',true);return}
+  const button=this,version=translationRequestVersion;button.disabled=true;
+  tStatus('Reading image or scan. Verify the extracted text before translation.');
   try{
-    const result = await requestJson('/translation/estimate',sourceFormData(false));
-    if(translationRequestVersion!==requestVersion || sourceLanguageSelect.value!==pair.source || targetLanguageSelect.value!==pair.target)return;
-    translationSourceWords = result.source_words;
-    quoteUpdate();
-    tStatus('Source word count ready. ' + result.passages + ' passages found. Confirm rates and counting rules for this language pair.');
-  }catch(err){tStatus(err.message,true)}
-  finally{button.disabled=false}
+    const fd=new FormData();fd.append('file',file);fd.append('model',document.getElementById('translationModel').value);
+    const result=await requestJson('/extract/image',fd);
+    if(version!==translationRequestVersion)return;
+    document.getElementById('translationText').value=result.text;
+    document.getElementById('translationFile').value='';
+    clearTranslationOutput();
+    tStatus('Image text extracted. Check and correct source text above, then select Translate.');
+  }catch(err){tStatus(err.message,true)}finally{button.disabled=false}
 });
+
 document.getElementById('translationForm').addEventListener('submit',async function(event){
   event.preventDefault();
   const pair=languagePair(),button=document.getElementById('translateGo');
@@ -380,10 +381,9 @@ document.getElementById('translationForm').addEventListener('submit',async funct
     translationItems=result.items.map(function(item){return Object.assign({},item,{revisions:0})});
     translationFilename=result.filename;
     translationSha=result.source_sha256 || '';
-    translationSourceWords=result.source_words;
     translationSourceFile=sourceFile;
     translationPair=pair;
-    quoteUpdate();renderTranslationItems();
+    renderTranslationItems();
     document.getElementById('translationActions').style.display='flex';
     document.getElementById('translationUtilities').style.display='flex';
     setSourceLock(true);
@@ -534,9 +534,7 @@ document.getElementById('translationSaveProject').addEventListener('click',funct
   if(!translationItems.length || !translationPair){tStatus('Generate a translation before saving.',true);return}
   const state={
     version:1, savedAt:new Date().toISOString(),pair:translationPair,
-    filename:translationFilename, sha:translationSha,sourceWords:translationSourceWords,
-    sourceText:document.getElementById('translationText').value,
-    rate:document.getElementById('translationRate').value,
+    filename:translationFilename, sha:translationSha,    sourceText:document.getElementById('translationText').value,
     audience:translationAudience.value,glossary:translationGlossary.value,
     items:translationItems
   };
@@ -569,14 +567,12 @@ document.getElementById('translationLoadProject').addEventListener('change',asyn
     }));
     translationFilename=typeof state.filename==='string'?state.filename.slice(0,200):'saved_project.txt';
     translationSha=typeof state.sha==='string'?state.sha:'';
-    translationSourceWords=Number(state.sourceWords)||0;
     translationSourceFile=null;
     translationAudience.value=['natural','education','ngo','formal'].includes(state.audience)?state.audience:'natural';
     translationGlossary.value=typeof state.glossary==='string'?state.glossary.slice(0,3000):'';
-    document.getElementById('translationRate').value=state.rate===undefined?'':state.rate;
     document.getElementById('translationText').value=typeof state.sourceText==='string'?state.sourceText.slice(0,120000):'';
     document.getElementById('translationFile').value='';
-    quoteUpdate();renderTranslationItems();
+    renderTranslationItems();
     document.getElementById('translationActions').style.display='flex';
     document.getElementById('translationUtilities').style.display='flex';
     document.getElementById('translationReattach').style.display=translationFilename.toLowerCase().endsWith('.docx')?'flex':'none';
@@ -589,7 +585,7 @@ document.getElementById('translationLoadProject').addEventListener('change',asyn
 
 document.getElementById('translationDraftDownload').addEventListener('click',function(){downloadTranslation('working')});
 document.getElementById('translationFinalDownload').addEventListener('click',function(){downloadTranslation('final')});
-quoteUpdate();
+
 
 </script>
 </body>

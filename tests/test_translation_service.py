@@ -80,10 +80,6 @@ def test_api_estimate_translate_and_verified_download(monkeypatch):
     client = TestClient(review_app.app)
     source = sample_docx()
     files = {"file": ("source.docx", source, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
-    estimated = client.post("/translation/estimate", files=files)
-    assert estimated.status_code == 200, estimated.text
-    assert estimated.json()["source_words"] > 0
-
     generated = client.post("/translation/translate", files=files)
     assert generated.status_code == 200, generated.text
     body = generated.json()
