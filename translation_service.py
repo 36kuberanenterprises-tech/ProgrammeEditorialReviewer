@@ -163,11 +163,15 @@ def _replace_paragraph_text(paragraph: Paragraph, new_text: str) -> None:
 
     Inline mixed font styling cannot be safely aligned after translation.
     """
-    text_runs = [run for run in paragraph.runs if run.text]
-    if text_runs:
-        text_runs[0].text = new_text
-        for run in text_runs[1:]:
-            run.text = ""
+    # Edit only XML text nodes. Assigning run.text deletes drawing nodes
+    # in the same run, so that would unexpectedly remove inline photographs.
+    text_nodes = []
+    for run in paragraph.runs:
+        text_nodes.extend(run._r.xpath(".//w:t"))
+    if text_nodes:
+        text_nodes[0].text = new_text
+        for node in text_nodes[1:]:
+            node.text = ""
     else:
         paragraph.add_run(new_text)
 
