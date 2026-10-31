@@ -114,6 +114,7 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
     <div id="translationStatus" class="status" role="status" aria-live="polite"></div>
     <div id="translationProgress" class="translation-small"></div>
     <div class="translation-utilities" id="translationUtilities" style="display:none">
+      <button type="button" class="secondary" id="translationNewProject">Start a new translation</button>
       <button type="button" class="soft" id="translationCopyAll">Copy all translated text</button>
       <button type="button" class="soft" id="translationSaveProject">Save review progress</button>
       <button type="button" class="soft" id="translationTextDownload">Download translated TXT</button>
@@ -245,6 +246,10 @@ let translationSourceWords = 0;
 let translationSourceFile = null;
 let translationPair = null;
 let translationRequestVersion = 0;
+function setSourceLock(locked){
+  document.getElementById('translationText').readOnly=locked;
+  document.getElementById('translationFile').disabled=locked;
+}
 const translationAudience=document.getElementById('translationAudience');
 const translationGlossary=document.getElementById('translationGlossary');
 function tStatus(message, isError){
@@ -269,25 +274,39 @@ function clearTranslationOutput(){
   document.getElementById('translationReattach').style.display='none';
   document.getElementById('translationOriginalAgain').value='';
   document.getElementById('translationStatus').style.display='none';
+  setSourceLock(false);
   quoteUpdate();
 }
 document.getElementById('translationRate').addEventListener('input', quoteUpdate);
 function changedLanguage(){
+  if(translationItems.length && !window.confirm('Changing languages starts a new translation and discards the current review. Save your progress first if needed. Continue?')){
+    sourceLanguageSelect.value=translationPair.source;
+    targetLanguageSelect.value=translationPair.target;
+    return;
+  }
   const pair=languagePair();
   document.getElementById('translationRate').value = pair.source==='hi' && pair.target==='gu' ? '1.80' : '';
   clearTranslationOutput();
 }
 sourceLanguageSelect.addEventListener('change',changedLanguage);
 targetLanguageSelect.addEventListener('change',changedLanguage);
-translationAudience.addEventListener('change',clearTranslationOutput);
-translationGlossary.addEventListener('input',clearTranslationOutput);
+translationAudience.addEventListener('change',function(){
+  translationRequestVersion++;
+  if(translationItems.length)tStatus('Style changes apply to new translations and future AI revisions, not passages already drafted.');
+});
+translationGlossary.addEventListener('input',function(){
+  translationRequestVersion++;
+  if(translationItems.length)tStatus('Preferred terminology changes apply to new translations and future AI revisions, not passages already drafted.');
+});
 document.getElementById('translationText').addEventListener('input',clearTranslationOutput);
 document.getElementById('translationFile').addEventListener('change',clearTranslationOutput);
 document.getElementById('swapTranslationLanguages').addEventListener('click',function(){
+  if(translationItems.length && !window.confirm('Swapping languages starts a new translation. Save this review before continuing. Continue?'))return;
   const previous=sourceLanguageSelect.value;
   sourceLanguageSelect.value=targetLanguageSelect.value;
   targetLanguageSelect.value=previous;
-  changedLanguage();
+  document.getElementById('translationRate').value=sourceLanguageSelect.value==='hi' && targetLanguageSelect.value==='gu'?'1.80':'';
+  clearTranslationOutput();
 });
 function sourceFormData(withModel){
   const pair=languagePair();
@@ -350,6 +369,7 @@ document.getElementById('translationForm').addEventListener('submit',async funct
     quoteUpdate();renderTranslationItems();
     document.getElementById('translationActions').style.display='flex';
     document.getElementById('translationUtilities').style.display='flex';
+    setSourceLock(true);
     tStatus(pair.sourceName + ' to ' + pair.targetName + ' working draft generated. Review every passage before delivery.');
   }catch(err){tStatus(err.message,true)}
   finally{button.disabled=false}
@@ -479,6 +499,13 @@ function triggerLocalDownload(blob,filename){
   setTimeout(function(){URL.revokeObjectURL(url)},60000);
 }
 function allTranslatedText(){return translationItems.map(x=>x.translated||'').join('\n\n')}
+document.getElementById('translationNewProject').addEventListener('click',function(){
+  if(translationItems.length && !window.confirm('Start a new translation? Save this review as a project first if you need it later.'))return;
+  clearTranslationOutput();
+  document.getElementById('translationText').value='';
+  document.getElementById('translationFile').value='';
+  tStatus('New translation ready. Choose languages, paste text or select a document.');
+});
 document.getElementById('translationCopyAll').addEventListener('click',function(){copyTranslationText(allTranslatedText())});
 document.getElementById('translationTextDownload').addEventListener('click',function(){
   if(!translationItems.length){tStatus('No translation to download.',true);return}
@@ -536,6 +563,7 @@ document.getElementById('translationLoadProject').addEventListener('change',asyn
     document.getElementById('translationActions').style.display='flex';
     document.getElementById('translationUtilities').style.display='flex';
     document.getElementById('translationReattach').style.display=translationFilename.toLowerCase().endsWith('.docx')?'flex':'none';
+    setSourceLock(true);
     tStatus('Review progress restored. For Word documents, reattach the original DOCX before downloading.');
     switchService(true);
   }catch(err){tStatus(err.message,true)}
