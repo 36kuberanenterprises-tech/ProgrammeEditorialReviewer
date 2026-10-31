@@ -104,4 +104,4 @@ def test_script_review_for_different_language_pairs():
     assert translation_needs_review("नमस्ते", "ನಮಸ್ಕಾರ", "kn") == []
     assert translation_needs_review("Hello", "Hello", "hi")
     assert translation_needs_review("नमस्ते", "", "en")
-    assert translation_needs_review("नमस्ते", "हिन्दी", "te")
+    assert translation_needs_review("नमस्ते", "हिन्दी भाषा", "te")
