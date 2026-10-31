@@ -1,6 +1,6 @@
 # Programme Editorial Reviewer
 
-Web application for NGO, CSR and development sector proofreading and Hindi to Gujarati translation.
+Web application for NGO, CSR and development sector proofreading and translation between English and 22 scheduled Indian languages.
 
 ## Existing proofreading
 
@@ -9,30 +9,25 @@ Web application for NGO, CSR and development sector proofreading and Hindi to Gu
 * Preserve supplied facts and figures, and flag statements needing confirmation.
 * Treat existing beneficiary skills accurately.
 * Show deletions in red strikethrough and additions in blue.
-* Download marked editorial review DOCX and clean revised DOCX.
+* Download marked editorial revie## Indian language translation service
 
-## Hindi to Gujarati translation service
+Choose the independent **Translation** tab. Proofreading is retained in its own tab.
 
-Choose the **Hindi to Gujarati translation** tab.
+1. Select the source language and target language independently, or use Swap languages. Choose from English and all 22 scheduled Indian languages, including Hindi, Kannada, Telugu, Punjabi, Tamil, Gujarati, Bengali, Malayalam, Marathi and Odia. All distinct listed language pairs are selectable.
+2. Paste text or upload DOCX, PDF, TXT or MD. The quotation calculator counts Unicode source words, and its starting INR 1.80 rate is editable. This is not a standard rate for all languages. Agree counting rules and price with the client.
+3. Generate a Gemini assisted translation draft for the selected language pair. Check that source material matches the selected source language.
+4. Compare source and target text side by side, edit individual passages, and apply up to four rounds of AI assisted reviewer feedback per passage.
+5. A bilingual translator must verify each passage. The Word export is available as a working copy, and final export is enabled when each passage is marked approved.
+6. Download the Word file named for the selected target language. Uploaded DOCX documents retain paragraph and table structure and styles where possible; inline font formatting must be reviewed. PDFs are extracted into new Word files without preserving the original page design.
 
-1. Upload a Hindi DOCX, PDF, TXT or MD document or paste Hindi text.
-2. Count source words and prepare an indicative quotation. The rate is editable and defaults to INR 1.80 per Hindi source word. Numbers are counted; punctuation is not. Agree the counting method with the client before billing.
-3. Generate an AI assisted Gujarati working draft using the configured Gemini API.
-4. Compare original Hindi and editable Gujarati passages side by side.
-5. Your Gujarati translator can edit and approve passages, and apply up to four feedback revisions per passage in the active browser session.
-6. Download a working Word file. A final Word file is enabled after every passage has been marked as verified by the human translator.
+### Quality, limitations and privacy
 
-### Document handling
+* Offering a language pair does not guarantee that the Gemini model will translate it accurately. Low resource languages, script variants, names and specialised terms may require substantial human translation and review. Source and target scripts are checked only for simple warnings, not quality certification.
+* Scanned image PDFs need text recognition before upload; Word and PDF layout changes need manual inspection. Target fonts must be installed on the viewing device for correct display.
+* Translation source text is transmitted to the configured Gemini API. Check client confidentiality and data processing requirements before uploading restricted content.
+* Translation progress and revisions are not stored on a server. Refreshing the browser clears the current session. API keys must be kept only in server environment variables.
 
-* DOCX exports retain their original paragraphs, tables and styles where possible. Embedded images are kept in place, but complex inline formatting must be reviewed.
-* PDF text is extracted into a new Word file. The original PDF layout and graphics are not reconstructed.
-* Scanned image PDFs require text recognition before use.
-* The service does not certify the accuracy of AI translations. A competent Hindi to Gujarati translator and proofreader must check all content before delivery.
-* Revision history is not stored in a database. Refreshing the page loses the current review session.
-
-### Privacy
-
-The translated source text is transmitted to the configured Gemini API for processing. Check the client's confidentiality and data processing requirements before uploading restricted material. Do not store API keys in GitHub or the browser.
+keys in GitHub or the browser.
 
 ## Configuration
 
