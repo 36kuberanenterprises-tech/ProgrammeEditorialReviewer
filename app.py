@@ -2,12 +2,13 @@ import io
 import os
 import re
 import json
+import hmac
 import difflib
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import httpx
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Header, Depends
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
@@ -420,9 +421,19 @@ def build_clean_doc(results: List[Dict[str, Any]], title: str) -> bytes:
     return out.getvalue()
 
 
+def require_access_code(access_code: Optional[str] = Header(None, alias="X-Editor-Code")) -> None:
+    """Optional deployment protection for endpoints that invoke paid AI calls."""
+    expected = os.getenv("EDITOR_ACCESS_CODE", "").strip()
+    if expected and not hmac.compare_digest((access_code or "").encode(), expected.encode()):
+        raise HTTPException(status_code=401, detail="App access code is missing or incorrect.")
+
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "languages": LANGUAGES})
+    return templates.TemplateResponse("index.html", {
+        "request": request, "languages": LANGUAGES,
+        "requires_access": bool(os.getenv("EDITOR_ACCESS_CODE", "").strip()),
+    })
 
 
 @app.get("/health")
@@ -436,6 +447,7 @@ async def review(
     text: str = Form(""),
     page_mode: str = Form("false"),
     model: str = Form("gemini-3.1-flash-lite"),
+    _auth: None = Depends(require_access_code),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
@@ -511,6 +523,7 @@ async def refine(
     context_after: str = Form(""),
     unit_type: str = Form("paragraph"),
     model: str = Form("gemini-3.1-flash-lite"),
+    _auth: None = Depends(require_access_code),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
@@ -729,6 +742,7 @@ async def translation_translate(
     target_language: str = Form("gu"),
     audience: str = Form("natural"),
     glossary: str = Form(""),
+    _auth: None = Depends(require_access_code),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
@@ -770,6 +784,7 @@ async def translation_revise(
     target_language: str = Form("gu"),
     audience: str = Form("natural"),
     glossary: str = Form(""),
+    _auth: None = Depends(require_access_code),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
