@@ -20,8 +20,8 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
 @media(max-width:760px){form.row{grid-template-columns:1fr}.hero h1{font-size:27px}.actions{flex-direction:column}.textmeta{flex-direction:column}}
 
 .service-nav{display:flex;flex-wrap:wrap;gap:10px;margin:17px 0 0}.service-nav button{background:#e5eaf2;color:#283b55}.service-nav button.active{background:var(--accent);color:#fff}
-.language-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin:16px 0}.language-pair .swap-languages{height:44px}.translation-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.translation-pane{background:#f8fafc;border:1px solid var(--line);padding:12px;border-radius:10px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}.translation-card{border-top:1px solid var(--line);padding:20px 0}.translation-card h3{margin:0 0 10px}.translation-card textarea{min-height:125px}.translation-tools{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:13px}.translation-tools input[type=checkbox]{width:auto}.translation-tools textarea{min-height:76px}.translation-summary{display:flex;gap:20px;flex-wrap:wrap;align-items:end;margin:18px 0}.translation-summary input{width:145px!important}.translation-flag{color:#9a3412;background:#fff4ed;padding:9px;margin-top:8px;border-radius:8px;font-size:13px}.translation-small{color:var(--muted);font-size:13px}.translation-actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
-@media(max-width:760px){.language-pair{grid-template-columns:1fr}.language-pair .swap-languages{width:100%}.translation-grid{grid-template-columns:1fr}.translation-actions{flex-direction:column}.translation-actions button{width:100%}}
+.language-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin:16px 0}.language-pair .swap-languages{height:44px}.translation-settings{display:grid;grid-template-columns:220px 1fr;gap:14px;margin:14px 0}.translation-settings textarea{min-height:96px}.translation-utilities{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin:14px 0}.translation-utilities input[type=file]{max-width:250px;font-size:13px}.translation-utilities button{font-size:13px}.translation-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.translation-pane{background:#f8fafc;border:1px solid var(--line);padding:12px;border-radius:10px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}.translation-card{border-top:1px solid var(--line);padding:20px 0}.translation-card h3{margin:0 0 10px}.translation-card textarea{min-height:125px}.translation-tools{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:13px}.translation-tools input[type=checkbox]{width:auto}.translation-tools textarea{min-height:76px}.translation-summary{display:flex;gap:20px;flex-wrap:wrap;align-items:end;margin:18px 0}.translation-summary input{width:145px!important}.translation-flag{color:#9a3412;background:#fff4ed;padding:9px;margin-top:8px;border-radius:8px;font-size:13px}.translation-small{color:var(--muted);font-size:13px}.translation-actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+@media(max-width:760px){.translation-settings{grid-template-columns:1fr}.translation-utilities{align-items:stretch}.language-pair{grid-template-columns:1fr}.language-pair .swap-languages{width:100%}.translation-grid{grid-template-columns:1fr}.translation-actions{flex-direction:column}.translation-actions button{width:100%}}
 </style>
 </head>
 <body>
@@ -86,6 +86,15 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
         </select>
       </div>
     </div>
+    <div class="translation-settings">
+      <div class="field"><label for="translationAudience">Writing style</label>
+        <select id="translationAudience"><option value="natural">Natural and simple</option><option value="education">School and learning materials</option><option value="ngo">NGO and CSR reports</option><option value="formal">Formal and official</option></select>
+      </div>
+      <div class="field"><label for="translationGlossary">Preferred terminology, optional</label>
+        <textarea id="translationGlossary" placeholder="One term per line. Example: source term = preferred translated term" maxlength="3000"></textarea>
+        <div class="translation-small">Use one source term = target term per line, maximum 30 terms. AI applies the preference when suitable; your reviewer must confirm the translation.</div>
+      </div>
+    </div>
     <div class="field">
       <label for="translationText">Paste the text to translate, or upload a document below</label>
       <textarea id="translationText" placeholder="Type or paste your source language text here..."></textarea>
@@ -104,12 +113,25 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
     <div class="note">The ₹1.80 rate is only a starting estimate and must be adjusted for each language pair, complexity and reviewer cost. Uploaded DOCX files retain paragraphs and tables where possible, but complex formatting and fonts need checking. PDFs become new Word documents; scanned PDFs require OCR first. Submitted text is sent to the configured Gemini service, so confirm confidentiality requirements before uploading sensitive material.</div>
     <div id="translationStatus" class="status" role="status" aria-live="polite"></div>
     <div id="translationProgress" class="translation-small"></div>
+    <div class="translation-utilities" id="translationUtilities" style="display:none">
+      <button type="button" class="soft" id="translationCopyAll">Copy all translated text</button>
+      <button type="button" class="soft" id="translationSaveProject">Save review progress</button>
+      <button type="button" class="soft" id="translationTextDownload">Download translated TXT</button>
+    </div>
+    <div class="translation-utilities">
+      <label for="translationLoadProject" class="translation-small"><strong>Resume saved translation</strong> (JSON project file)</label>
+      <input type="file" id="translationLoadProject" accept=".json,application/json" aria-label="Open saved translation project">
+    </div>
+    <div class="translation-utilities" id="translationReattach" style="display:none">
+      <label for="translationOriginalAgain" class="translation-small"><strong>Original Word document:</strong> attach the same DOCX to preserve formatting when exporting a resumed project</label>
+      <input type="file" id="translationOriginalAgain" accept=".docx">
+    </div>
     <div id="translationResults"></div>
     <div id="translationActions" class="translation-actions" style="display:none">
       <button type="button" id="translationDraftDownload" class="secondary">Download working translation in Word</button>
       <button type="button" id="translationFinalDownload" disabled>Download human approved translation</button>
     </div>
-    <p class="translation-small" id="translationReviewNote">The source and translation appear side by side for editing. Your bilingual reviewer must check each passage before final export. Up to four AI feedback revisions are available per passage in a browser session. Progress is not saved after refreshing the page.</p>
+    <p class="translation-small" id="translationReviewNote">The source and translation appear side by side for editing. Your bilingual reviewer must check each passage before final export. Up to four AI feedback revisions are available per passage in a browser session. Use Save review progress to download a local JSON project before refreshing. The application does not automatically save restricted text.</p>
   </div>
 </div>
 <script>
@@ -144,6 +166,9 @@ function tokenHtml(t,cls=''){
 }
 function diffWords(a,b){
   const A=tokenizeKeepBreaks(a),B=tokenizeKeepBreaks(b),n=A.length,m=B.length;
+  if(n*m>180000){
+    return '<div class="translation-small">This section is long, so detailed word highlighting is skipped to keep the page responsive. The complete revised text is shown below.</div><div class="revised">'+esc(b).replace(/\\n/g,'<br>')+'</div>';
+  }
   const dp=Array.from({length:n+1},()=>Array(m+1).fill(0));
   for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)dp[i][j]=A[i]===B[j]?dp[i+1][j+1]+1:Math.max(dp[i+1][j],dp[i][j+1]);
   let i=0,j=0,out=[];
@@ -219,6 +244,9 @@ let translationSha = '';
 let translationSourceWords = 0;
 let translationSourceFile = null;
 let translationPair = null;
+let translationRequestVersion = 0;
+const translationAudience=document.getElementById('translationAudience');
+const translationGlossary=document.getElementById('translationGlossary');
 function tStatus(message, isError){
   const box = document.getElementById('translationStatus');
   box.style.display = 'block';
@@ -226,29 +254,40 @@ function tStatus(message, isError){
   box.textContent = message;
 }
 function quoteUpdate(){
-  const rate = Number(document.getElementById('translationRate').value);
-  const amount = Number.isFinite(rate) && rate >= 0 ? translationSourceWords * rate : 0;
+  const raw=document.getElementById('translationRate').value;
+  const rate = Number(raw);
   document.getElementById('sourceWordCount').textContent = translationSourceWords.toLocaleString('en-IN') + ' ' + languageName(sourceLanguageSelect) + ' source words';
-  document.getElementById('translationQuotation').textContent = 'Estimated quotation: ₹' + amount.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('translationQuotation').textContent = raw && Number.isFinite(rate) && rate>=0 ? 'Estimated quotation: ₹'+(translationSourceWords*rate).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2}) : 'Enter a rate to estimate the quotation';
 }
 function clearTranslationOutput(){
+  translationRequestVersion++;
   translationItems=[];translationSourceWords=0;translationSha='';translationSourceFile=null;translationPair=null;
   document.getElementById('translationResults').replaceChildren();
   document.getElementById('translationProgress').textContent='';
   document.getElementById('translationActions').style.display='none';
+  document.getElementById('translationUtilities').style.display='none';
+  document.getElementById('translationReattach').style.display='none';
+  document.getElementById('translationOriginalAgain').value='';
   document.getElementById('translationStatus').style.display='none';
   quoteUpdate();
 }
 document.getElementById('translationRate').addEventListener('input', quoteUpdate);
-sourceLanguageSelect.addEventListener('change', clearTranslationOutput);
-targetLanguageSelect.addEventListener('change', clearTranslationOutput);
+function changedLanguage(){
+  const pair=languagePair();
+  document.getElementById('translationRate').value = pair.source==='hi' && pair.target==='gu' ? '1.80' : '';
+  clearTranslationOutput();
+}
+sourceLanguageSelect.addEventListener('change',changedLanguage);
+targetLanguageSelect.addEventListener('change',changedLanguage);
+translationAudience.addEventListener('change',clearTranslationOutput);
+translationGlossary.addEventListener('input',clearTranslationOutput);
 document.getElementById('translationText').addEventListener('input',clearTranslationOutput);
 document.getElementById('translationFile').addEventListener('change',clearTranslationOutput);
 document.getElementById('swapTranslationLanguages').addEventListener('click',function(){
   const previous=sourceLanguageSelect.value;
   sourceLanguageSelect.value=targetLanguageSelect.value;
   targetLanguageSelect.value=previous;
-  clearTranslationOutput();
+  changedLanguage();
 });
 function sourceFormData(withModel){
   const pair=languagePair();
@@ -261,7 +300,11 @@ function sourceFormData(withModel){
   else throw new Error('Please paste source text or choose a source document.');
   data.append('source_language',pair.source);
   data.append('target_language',pair.target);
-  if(withModel)data.append('model',document.getElementById('translationModel').value);
+  if(withModel){
+    data.append('model',document.getElementById('translationModel').value);
+    data.append('audience',translationAudience.value);
+    data.append('glossary',translationGlossary.value);
+  }
   return data;
 }
 async function requestJson(endpoint, data){
@@ -273,11 +316,11 @@ async function requestJson(endpoint, data){
 }
 document.getElementById('estimateTranslation').addEventListener('click',async function(){
   const button = this;button.disabled = true;
-  const pair=languagePair();
+  const pair=languagePair(),requestVersion=translationRequestVersion;
   tStatus('Counting ' + pair.sourceName + ' source words...');
   try{
     const result = await requestJson('/translation/estimate',sourceFormData(false));
-    if(sourceLanguageSelect.value!==pair.source || targetLanguageSelect.value!==pair.target)return;
+    if(translationRequestVersion!==requestVersion || sourceLanguageSelect.value!==pair.source || targetLanguageSelect.value!==pair.target)return;
     translationSourceWords = result.source_words;
     quoteUpdate();
     tStatus('Source word count ready. ' + result.passages + ' passages found. Confirm rates and counting rules for this language pair.');
@@ -288,13 +331,14 @@ document.getElementById('translationForm').addEventListener('submit',async funct
   event.preventDefault();
   const pair=languagePair(),button=document.getElementById('translateGo');
   button.disabled=true;clearTranslationOutput();
+  const requestVersion=translationRequestVersion;
   tStatus('Generating ' + pair.targetName + ' working translation from ' + pair.sourceName + '. Human verification is required.');
   try{
     const fd=sourceFormData(true);
     const sourceFile=fd.get('file') || null;
     const result=await requestJson('/translation/translate',fd);
-    if(sourceLanguageSelect.value!==pair.source || targetLanguageSelect.value!==pair.target){
-      tStatus('Language selection changed during translation. Please generate again.',true);
+    if(translationRequestVersion!==requestVersion || sourceLanguageSelect.value!==pair.source || targetLanguageSelect.value!==pair.target){
+      tStatus('The input changed during translation. Please generate again using the updated text.',true);
       return;
     }
     translationItems=result.items.map(function(item){return Object.assign({},item,{revisions:0})});
@@ -305,6 +349,7 @@ document.getElementById('translationForm').addEventListener('submit',async funct
     translationPair=pair;
     quoteUpdate();renderTranslationItems();
     document.getElementById('translationActions').style.display='flex';
+    document.getElementById('translationUtilities').style.display='flex';
     tStatus(pair.sourceName + ' to ' + pair.targetName + ' working draft generated. Review every passage before delivery.');
   }catch(err){tStatus(err.message,true)}
   finally{button.disabled=false}
@@ -329,10 +374,13 @@ function renderTranslationItems(){
     const panes=makeElement('div','translation-grid');
     const sourceCol=makeElement('div');
     sourceCol.appendChild(makeElement('div','label','Original '+pair.sourceName));
-    sourceCol.appendChild(makeElement('div','translation-pane',item.original));
+    const sourcePane=makeElement('div','translation-pane',item.original);
+    sourcePane.dir=['ur','ks','sd'].includes(pair.source)?'rtl':'auto';
+    sourceCol.appendChild(sourcePane);
     const targetCol=makeElement('div');
     const label=makeElement('label','label',pair.targetName+' translation, editable');
     const target=makeElement('textarea');target.value=item.translated;
+    target.dir=['ur','ks','sd'].includes(pair.target)?'rtl':'auto';
     target.setAttribute('aria-label',pair.targetName+' translation passage '+item.id);
     target.addEventListener('input',function(){item.translated=target.value;item.reviewed=false;approve.checked=false;updateTranslationApproval()});
     targetCol.appendChild(label);targetCol.appendChild(target);
@@ -347,6 +395,10 @@ function renderTranslationItems(){
     const approveLabel=makeElement('label','','Translator has verified this passage against the '+pair.sourceName+' original');
     approveLabel.htmlFor=approve.id;approveLabel.prepend(approve);
     tools.appendChild(approveLabel);
+    const copyOne=makeElement('button','soft','Copy passage');
+    copyOne.type='button';
+    copyOne.addEventListener('click',async function(){await copyTranslationText(item.translated)});
+    tools.appendChild(copyOne);
     tools.appendChild(makeElement('span','translation-small','AI revision feedback used: '+item.revisions+' of 4'));
     wrapper.appendChild(tools);
     const revision=makeElement('textarea');
@@ -363,6 +415,7 @@ function renderTranslationItems(){
       fd.append('feedback',revision.value.trim());fd.append('revision_round',String(item.revisions+1));
       fd.append('model',document.getElementById('translationModel').value);
       fd.append('source_language',pair.source);fd.append('target_language',pair.target);
+      fd.append('audience',translationAudience.value);fd.append('glossary',translationGlossary.value);
       try{
         const result=await requestJson('/translation/revise',fd);
         if(translationPair!==pair)return;
@@ -394,8 +447,9 @@ async function downloadTranslation(stage){
     fd.append('stage',stage);
     fd.append('target_language',translationPair.target);
     if(translationFilename.toLowerCase().endsWith('.docx')){
-      if(!translationSourceFile)throw new Error('Original Word file is missing. Please upload it again.');
-      fd.append('file',translationSourceFile);
+      const original=translationSourceFile || document.getElementById('translationOriginalAgain').files[0];
+      if(!original)throw new Error('Select the original Word document to preserve its formatting.');
+      fd.append('file',original);
     }
     const response=await fetch('/translation/download',{method:'POST',body:fd});
     if(!response.ok){let detail='Download failed.';try{const result=await response.json();detail=result.detail||detail}catch(_){}throw new Error(detail)}
@@ -411,6 +465,83 @@ async function downloadTranslation(stage){
   }catch(err){tStatus(err.message,true)}
   finally{button.disabled=false;button.textContent=old;updateTranslationApproval()}
 }
+async function copyTranslationText(text){
+  if(!text.trim()){tStatus('There is no translated text to copy.',true);return}
+  try{
+    await navigator.clipboard.writeText(text);
+    tStatus('Translation copied to clipboard.');
+  }catch(err){tStatus('Clipboard access failed. Please select and copy the translation manually.',true)}
+}
+function triggerLocalDownload(blob,filename){
+  const url=URL.createObjectURL(blob),anchor=document.createElement('a');
+  anchor.href=url;anchor.download=filename;
+  document.body.appendChild(anchor);anchor.click();anchor.remove();
+  setTimeout(function(){URL.revokeObjectURL(url)},60000);
+}
+function allTranslatedText(){return translationItems.map(x=>x.translated||'').join('\n\n')}
+document.getElementById('translationCopyAll').addEventListener('click',function(){copyTranslationText(allTranslatedText())});
+document.getElementById('translationTextDownload').addEventListener('click',function(){
+  if(!translationItems.length){tStatus('No translation to download.',true);return}
+  const filename=(translationFilename.replace(/\.[^.]+$/,'')||'translation').replace(/[^a-zA-Z0-9_]/g,'_')+'_'+translationPair.targetName+'.txt';
+  triggerLocalDownload(new Blob([allTranslatedText()],{type:'text/plain;charset=utf-8'}),filename);
+  tStatus('Text copy prepared. Review before client delivery.');
+});
+document.getElementById('translationSaveProject').addEventListener('click',function(){
+  if(!translationItems.length || !translationPair){tStatus('Generate a translation before saving.',true);return}
+  const state={
+    version:1, savedAt:new Date().toISOString(),pair:translationPair,
+    filename:translationFilename, sha:translationSha,sourceWords:translationSourceWords,
+    sourceText:document.getElementById('translationText').value,
+    rate:document.getElementById('translationRate').value,
+    audience:translationAudience.value,glossary:translationGlossary.value,
+    items:translationItems
+  };
+  triggerLocalDownload(new Blob([JSON.stringify(state,null,2)],{type:'application/json;charset=utf-8'}),'Translation_Review_Project.json');
+  tStatus('Review progress saved as a local JSON file. Keep the file private. To resume a Word upload later, keep the original DOCX as well.');
+});
+document.getElementById('translationLoadProject').addEventListener('change',async function(){
+  const file=this.files[0];
+  if(!file)return;
+  try{
+    if(file.size>3*1024*1024)throw new Error('Saved project is too large (maximum 3 MB).');
+    const state=JSON.parse(await file.text());
+    if(state.version!==1 || !state.pair || !state.items || !Array.isArray(state.items) || state.items.length>2500 || !state.items.length){
+      throw new Error('This is not a supported saved translation project.');
+    }
+    const s=state.pair.source,t=state.pair.target;
+    if(![...sourceLanguageSelect.options].some(o=>o.value===s) || ![...targetLanguageSelect.options].some(o=>o.value===t) || s===t){
+      throw new Error('Saved project has an unsupported language pair.');
+    }
+    const valid=state.items.every((x,i)=>x && x.id===i+1 && typeof x.original==='string' && typeof x.translated==='string' && x.original.length<120001 && x.translated.length<150001);
+    if(!valid)throw new Error('Saved project has invalid passages.');
+    clearTranslationOutput();
+    sourceLanguageSelect.value=s;targetLanguageSelect.value=t;
+    translationPair=languagePair();
+    translationItems=state.items.map(x=>({
+      id:x.id,original:x.original,translated:x.translated,
+      flags:Array.isArray(x.flags)?x.flags.filter(f=>typeof f==='string').slice(0,20):[],
+      reviewed:x.reviewed===true, revisions:Math.min(4,Math.max(0,Number(x.revisions)||0)),
+      page_break_before:!!x.page_break_before
+    }));
+    translationFilename=typeof state.filename==='string'?state.filename.slice(0,200):'saved_project.txt';
+    translationSha=typeof state.sha==='string'?state.sha:'';
+    translationSourceWords=Number(state.sourceWords)||0;
+    translationSourceFile=null;
+    translationAudience.value=['natural','education','ngo','formal'].includes(state.audience)?state.audience:'natural';
+    translationGlossary.value=typeof state.glossary==='string'?state.glossary.slice(0,3000):'';
+    document.getElementById('translationRate').value=state.rate===undefined?'':state.rate;
+    document.getElementById('translationText').value=typeof state.sourceText==='string'?state.sourceText.slice(0,120000):'';
+    document.getElementById('translationFile').value='';
+    quoteUpdate();renderTranslationItems();
+    document.getElementById('translationActions').style.display='flex';
+    document.getElementById('translationUtilities').style.display='flex';
+    document.getElementById('translationReattach').style.display=translationFilename.toLowerCase().endsWith('.docx')?'flex':'none';
+    tStatus('Review progress restored. For Word documents, reattach the original DOCX before downloading.');
+    switchService(true);
+  }catch(err){tStatus(err.message,true)}
+  finally{this.value=''}
+});
+
 document.getElementById('translationDraftDownload').addEventListener('click',function(){downloadTranslation('working')});
 document.getElementById('translationFinalDownload').addEventListener('click',function(){downloadTranslation('final')});
 quoteUpdate();
