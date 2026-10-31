@@ -17,7 +17,7 @@ from pypdf import PdfReader
 from translation_service import (
     TRANSLATION_PROMPT, REVISION_PROMPT, count_source_words,
     extract_translation_segments, build_translation_docx, checksum,
-    translation_needs_review,
+    translation_needs_review, LANGUAGES,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -422,7 +422,7 @@ def build_clean_doc(results: List[Dict[str, Any]], title: str) -> bytes:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "languages": LANGUAGES})
 
 
 @app.get("/health")
@@ -566,14 +566,27 @@ async def download_clean(payload: str = Form(...), filename: str = Form("documen
     data = build_clean_doc(results, f"{stem} Revised Copy")
     return StreamingResponse(io.BytesIO(data), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", headers={"Content-Disposition": f'attachment; filename="{stem}_clean_revised.docx"'})
 
-# The translation service is a separate workflow. Editorial review behaviour above is unchanged.
-def _translation_batch(items: List[Dict[str, Any]], model: str) -> List[Dict[str, Any]]:
+# The translation service remains separate from existing editorial proofreading.
+def _translation_languages(source_language: str, target_language: str) -> tuple[str, str]:
+    if source_language not in LANGUAGES or target_language not in LANGUAGES:
+        raise HTTPException(status_code=400, detail="Select a supported source and target language.")
+    if source_language == target_language:
+        raise HTTPException(status_code=400, detail="Source and target languages must be different.")
+    return LANGUAGES[source_language], LANGUAGES[target_language]
+
+
+def _translation_batch(
+    items: List[Dict[str, Any]], model: str, source_language: str = "hi", target_language: str = "gu"
+) -> List[Dict[str, Any]]:
+    source_name, target_name = _translation_languages(source_language, target_language)
     completed: List[Dict[str, Any]] = []
     batches = chunks([{"id": item["id"], "text": item["original"]} for item in items], max_chars=4500)
     for batch in batches:
         payload = json.dumps({
-            "task": "Translate each Hindi passage into Gujarati and proofread the result.",
-            "passages": [{"id": item["id"], "source_hindi": item["text"]} for item in batch],
+            "task": f"Translate faithfully from {source_name} into {target_name} and proofread.",
+            "source_language": source_name,
+            "target_language": target_name,
+            "passages": [{"id": item["id"], "source_text": item["text"]} for item in batch],
         }, ensure_ascii=False)
         result = extract_json(gemini_generate(model, payload, TRANSLATION_PROMPT))
         translated = {}
@@ -591,7 +604,7 @@ def _translation_batch(items: List[Dict[str, Any]], model: str) -> List[Dict[str
             if not isinstance(flags, list):
                 flags = [str(flags)]
             flags = [str(flag) for flag in flags if str(flag).strip()]
-            flags.extend(translation_needs_review(original, target))
+            flags.extend(translation_needs_review(original, target, target_language))
             completed.append({
                 "id": item["id"],
                 "original": original,
@@ -607,7 +620,7 @@ async def _translation_input(file: Optional[UploadFile], text: str) -> tuple[str
     if text:
         if len(text) > 120000:
             raise HTTPException(status_code=400, detail="Maximum pasted text length is 120,000 characters. Divide a larger document into sections.")
-        filename, data = "Pasted_Hindi_Text.txt", None
+        filename, data = "Pasted_Source_Text.txt", None
     elif file and file.filename:
         filename = Path(file.filename).name
         if Path(filename).suffix.lower() not in {".docx", ".pdf", ".txt", ".md"}:
@@ -618,7 +631,7 @@ async def _translation_input(file: Optional[UploadFile], text: str) -> tuple[str
         if not data:
             raise HTTPException(status_code=400, detail="The uploaded file is empty.")
     else:
-        raise HTTPException(status_code=400, detail="Paste Hindi text or upload a document.")
+        raise HTTPException(status_code=400, detail="Paste source text or upload a document.")
 
     try:
         items = extract_translation_segments(filename, data=data, text=text)
@@ -631,19 +644,29 @@ async def _translation_input(file: Optional[UploadFile], text: str) -> tuple[str
     return filename, data, items
 
 
+@app.get("/translation/languages")
+def translation_languages():
+    return {"languages": [{"code": code, "name": name} for code, name in LANGUAGES.items()]}
+
+
 @app.post("/translation/estimate")
 async def translation_estimate(
     file: Optional[UploadFile] = File(None),
     text: str = Form(""),
+    source_language: str = Form("hi"),
+    target_language: str = Form("gu"),
 ):
+    source_name, target_name = _translation_languages(source_language, target_language)
     filename, data, items = await _translation_input(file, text)
     word_count = sum(count_source_words(item["original"]) for item in items)
     return {
         "filename": filename,
+        "source_language": source_language,
+        "target_language": target_language,
         "source_words": word_count,
         "passages": len(items),
         "source_sha256": checksum(data) if data is not None else "",
-        "note": "Count includes numeric tokens and excludes punctuation. Confirm the agreed word counting method with the client.",
+        "note": f"Indicative {source_name} to {target_name} count. Numbers count as words. Language-specific counting rules and the quote must be confirmed with the client.",
     }
 
 
@@ -652,13 +675,16 @@ async def translation_translate(
     file: Optional[UploadFile] = File(None),
     text: str = Form(""),
     model: str = Form("gemini-3.1-flash-lite"),
+    source_language: str = Form("hi"),
+    target_language: str = Form("gu"),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
+    source_name, target_name = _translation_languages(source_language, target_language)
     filename, data, passages = await _translation_input(file, text)
     source_words = sum(count_source_words(item["original"]) for item in passages)
     try:
-        items = _translation_batch(passages, model)
+        items = _translation_batch(passages, model, source_language, target_language)
     except HTTPException:
         raise
     except Exception as exc:
@@ -667,11 +693,15 @@ async def translation_translate(
         result["page_break_before"] = passage["page_break_before"]
     return {
         "filename": filename,
+        "source_language": source_language,
+        "target_language": target_language,
+        "source_name": source_name,
+        "target_name": target_name,
         "source_words": source_words,
         "items": items,
         "source_sha256": checksum(data) if data is not None else "",
         "review_required": True,
-        "provider": "Gemini assisted draft. Human Gujarati proofreading required.",
+        "provider": f"Gemini assisted {source_name} to {target_name} draft. Human bilingual review required.",
     }
 
 
@@ -682,9 +712,12 @@ async def translation_revise(
     feedback: str = Form(...),
     revision_round: int = Form(...),
     model: str = Form("gemini-3.1-flash-lite"),
+    source_language: str = Form("hi"),
+    target_language: str = Form("gu"),
 ):
     if model not in ALLOWED_MODELS:
         raise HTTPException(status_code=400, detail="Unsupported model selection.")
+    source_name, target_name = _translation_languages(source_language, target_language)
     if not (1 <= revision_round <= 4):
         raise HTTPException(status_code=400, detail="Revision rounds must be between 1 and 4.")
     if not feedback.strip():
@@ -692,8 +725,10 @@ async def translation_revise(
     if len(original) > 10000 or len(translated) > 15000 or len(feedback) > 3000:
         raise HTTPException(status_code=400, detail="A revision passage or feedback is too long.")
     payload = json.dumps({
-        "hindi_source": original,
-        "current_gujarati_translation": translated,
+        "source_language": source_name,
+        "target_language": target_name,
+        "source_text": original,
+        "current_translation": translated,
         "human_reviewer_feedback": feedback.strip(),
         "revision_round": revision_round,
     }, ensure_ascii=False)
@@ -708,18 +743,21 @@ async def translation_revise(
     if not isinstance(flags, list):
         flags = [str(flags)]
     flags = [str(f) for f in flags if str(f).strip()]
-    flags.extend(translation_needs_review(original, target))
+    flags.extend(translation_needs_review(original, target, target_language))
     return {"translated": target, "flags": list(dict.fromkeys(flags)), "revision_round": revision_round, "reviewed": False}
 
 
 @app.post("/translation/download")
 async def translation_download(
     payload: str = Form(...),
-    filename: str = Form("Pasted_Hindi_Text.txt"),
+    filename: str = Form("Pasted_Source_Text.txt"),
     source_sha256: str = Form(""),
     stage: str = Form("working"),
+    target_language: str = Form("gu"),
     file: Optional[UploadFile] = File(None),
 ):
+    if target_language not in LANGUAGES:
+        raise HTTPException(status_code=400, detail="Unsupported target language.")
     if stage not in {"working", "final"}:
         raise HTTPException(status_code=400, detail="Invalid translation export stage.")
     if len(payload) > 3_000_000:
@@ -744,8 +782,9 @@ async def translation_download(
     except (ValueError, KeyError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     stem = re.sub(r"[^A-Za-z0-9_]", "_", Path(filename).stem)[:70] or "translation"
+    language = LANGUAGES[target_language].replace(" ", "_")
     return StreamingResponse(
         io.BytesIO(translated_data),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{stem}_Gujarati_{stage}.docx"'},
+        headers={"Content-Disposition": f'attachment; filename="{stem}_{language}_{stage}.docx"'},
     )
