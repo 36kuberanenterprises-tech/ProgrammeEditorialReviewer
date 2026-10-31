@@ -298,8 +298,14 @@ translationGlossary.addEventListener('input',function(){
   translationRequestVersion++;
   if(translationItems.length)tStatus('Preferred terminology changes apply to new translations and future AI revisions, not passages already drafted.');
 });
-document.getElementById('translationText').addEventListener('input',clearTranslationOutput);
-document.getElementById('translationFile').addEventListener('change',clearTranslationOutput);
+document.getElementById('translationText').addEventListener('input',function(){
+  if(this.value.trim())document.getElementById('translationFile').value='';
+  clearTranslationOutput();
+});
+document.getElementById('translationFile').addEventListener('change',function(){
+  if(this.files.length)document.getElementById('translationText').value='';
+  clearTranslationOutput();
+});
 document.getElementById('swapTranslationLanguages').addEventListener('click',function(){
   if(translationItems.length && !window.confirm('Swapping languages starts a new translation. Save this review before continuing. Continue?'))return;
   const previous=sourceLanguageSelect.value;
