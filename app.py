@@ -717,14 +717,20 @@ async def translation_download(
     payload: str = Form(...),
     filename: str = Form("Pasted_Hindi_Text.txt"),
     source_sha256: str = Form(""),
+    stage: str = Form("working"),
     file: Optional[UploadFile] = File(None),
 ):
+    if stage not in {"working", "final"}:
+        raise HTTPException(status_code=400, detail="Invalid translation export stage.")
     if len(payload) > 3_000_000:
         raise HTTPException(status_code=400, detail="Document exceeds maximum download payload size.")
     try:
         items = json.loads(payload)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=400, detail="Invalid translation data.") from exc
+
+    if stage == "final" and (not isinstance(items, list) or any(not isinstance(item, dict) or not item.get("reviewed") for item in items)):
+        raise HTTPException(status_code=400, detail="All translation passages must be verified by a human translator before final export.")
 
     original_bytes = None
     if Path(filename).suffix.lower() == ".docx":
@@ -741,5 +747,5 @@ async def translation_download(
     return StreamingResponse(
         io.BytesIO(translated_data),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f'attachment; filename="{stem}_Gujarati_translation.docx"'},
+        headers={"Content-Disposition": f'attachment; filename="{stem}_Gujarati_{stage}.docx"'},
     )
