@@ -296,7 +296,7 @@ def translation_needs_review(source: str, target: str, target_language: str = "g
     if letters >= 4 and expected_script and not re.search(expected_script, target):
         flags.append(f"{name} script was not detected. Please verify this passage.")
     # Preserve quantitative evidence and amounts. A human must assess differences.
-    numeric_pattern = r"[0-9０-９\\u0966-\\u096F\\u09E6-\\u09EF\\u0A66-\\u0A6F\\u0AE6-\\u0AEF\\u0BE6-\\u0BEF\\u0C66-\\u0C6F\\u0CE6-\\u0CEF\\u0D66-\\u0D6F]+(?:[.,][0-9]+)*"
+    numeric_pattern = r"\d+(?:[.,]\d+)*"
     if re.findall(numeric_pattern, source) != re.findall(numeric_pattern, target):
         flags.append("Numbers or amounts differ from the source. Please verify them.")
     return flags
