@@ -20,8 +20,8 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
 @media(max-width:760px){form.row{grid-template-columns:1fr}.hero h1{font-size:27px}.actions{flex-direction:column}.textmeta{flex-direction:column}}
 
 .service-nav{display:flex;flex-wrap:wrap;gap:10px;margin:17px 0 0}.service-nav button{background:#e5eaf2;color:#283b55}.service-nav button.active{background:var(--accent);color:#fff}
-.translation-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.translation-pane{background:#f8fafc;border:1px solid var(--line);padding:12px;border-radius:10px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}.translation-card{border-top:1px solid var(--line);padding:20px 0}.translation-card h3{margin:0 0 10px}.translation-card textarea{min-height:125px}.translation-tools{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:13px}.translation-tools input[type=checkbox]{width:auto}.translation-tools textarea{min-height:76px}.translation-summary{display:flex;gap:20px;flex-wrap:wrap;align-items:end;margin:18px 0}.translation-summary input{width:145px!important}.translation-flag{color:#9a3412;background:#fff4ed;padding:9px;margin-top:8px;border-radius:8px;font-size:13px}.translation-small{color:var(--muted);font-size:13px}.translation-actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
-@media(max-width:760px){.translation-grid{grid-template-columns:1fr}.translation-actions{flex-direction:column}.translation-actions button{width:100%}}
+.language-pair{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:end;margin:16px 0}.language-pair .swap-languages{height:44px}.translation-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.translation-pane{background:#f8fafc;border:1px solid var(--line);padding:12px;border-radius:10px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}.translation-card{border-top:1px solid var(--line);padding:20px 0}.translation-card h3{margin:0 0 10px}.translation-card textarea{min-height:125px}.translation-tools{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:13px}.translation-tools input[type=checkbox]{width:auto}.translation-tools textarea{min-height:76px}.translation-summary{display:flex;gap:20px;flex-wrap:wrap;align-items:end;margin:18px 0}.translation-summary input{width:145px!important}.translation-flag{color:#9a3412;background:#fff4ed;padding:9px;margin-top:8px;border-radius:8px;font-size:13px}.translation-small{color:var(--muted);font-size:13px}.translation-actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+@media(max-width:760px){.language-pair{grid-template-columns:1fr}.language-pair .swap-languages{width:100%}.translation-grid{grid-template-columns:1fr}.translation-actions{flex-direction:column}.translation-actions button{width:100%}}
 </style>
 </head>
 <body>
@@ -30,7 +30,7 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
     <h1>Programme Editorial Reviewer</h1>
     <p>Upload a PDF or Word file and review it in the same page flow, without separate paragraph labels. You can also paste one paragraph or one complete page for quick correction.</p>
     <div class="badges"><span class="badge">Free AI mode</span><span class="badge info">Grammar and spelling check</span><span class="badge info">Chapter context on</span><span class="badge info">Place names protected</span><span class="badge info">Strict layout length</span></div>
-    <div class="service-nav"><button type="button" id="editorNav" class="active">Proofreading</button><button type="button" id="translationNav">Hindi to Gujarati translation</button></div>
+    <div class="service-nav"><button type="button" id="editorNav" class="active">Proofreading</button><button type="button" id="translationNav">Translation</button></div>
   </div>
   <div class="card" id="editorWorkspace">
     <div class="modebar">
@@ -65,32 +65,51 @@ button{border:0;border-radius:10px;padding:12px 17px;background:var(--accent);co
   </div>
 
   <div class="card" id="translationWorkspace" style="display:none">
-    <h2>Hindi to Gujarati translation service</h2>
-    <p class="translation-small">For educational materials, school library instructions and programme documents. Prepare a quotation from the Hindi source word count, translate, proofread and record reviewer feedback. An experienced Gujarati translator must approve the final text. Text submitted for translation is sent to the configured Gemini API, so please check client confidentiality requirements before uploading restricted documents.</p>
+    <h2>Indian language translation</h2>
+    <p class="translation-small">Translate between English and all 22 scheduled Indian languages, or from any listed Indian language into another. Generate a working draft and edit it as a bilingual human translator. Translation accuracy is not guaranteed by AI; only a qualified reviewer should approve the final document.</p>
+    <div class="language-pair" aria-label="Select translation languages">
+      <div class="field">
+        <label for="translationSourceLanguage">Translate from</label>
+        <select id="translationSourceLanguage" required>
+          {% for code, name in languages.items() %}
+          <option value="{{ code }}" {% if code == 'hi' %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="button" class="soft swap-languages" id="swapTranslationLanguages" aria-label="Swap source and target languages">Swap languages ↔</button>
+      <div class="field">
+        <label for="translationTargetLanguage">Translate to</label>
+        <select id="translationTargetLanguage" required>
+          {% for code, name in languages.items() %}
+          <option value="{{ code }}" {% if code == 'gu' %}selected{% endif %}>{{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
     <div class="field">
-      <label for="translationText">Paste Hindi text, optional if uploading a document</label>
-      <textarea id="translationText" placeholder="हिन्दी सामग्री यहाँ पेस्ट करें..."></textarea>
+      <label for="translationText">Paste the text to translate, or upload a document below</label>
+      <textarea id="translationText" placeholder="Type or paste your source language text here..."></textarea>
     </div>
     <form id="translationForm" class="row" style="margin-top:12px">
       <div class="field"><label for="translationFile">Source document</label><input id="translationFile" type="file" accept=".docx,.pdf,.txt,.md"></div>
       <div class="field"><label for="translationModel">Translation model</label><select id="translationModel"><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option><option value="gemini-3.8-flash">Gemini 3.8 Flash</option></select></div>
-      <button type="submit" id="translateGo">Translate to Gujarati</button>
+      <button type="submit" id="translateGo">Translate</button>
     </form>
     <div class="translation-summary">
-      <div class="field"><label for="translationRate">Quoted rate per Hindi source word, INR</label><input id="translationRate" type="number" min="0" max="100" step="0.05" value="1.80"></div>
+      <div class="field"><label for="translationRate">Indicative rate per source word, INR</label><input id="translationRate" type="number" min="0" max="100" step="0.05" value="1.80"></div>
       <div><strong id="sourceWordCount">0 source words</strong><div class="translation-small">Numbers included in word count</div></div>
       <div><strong id="translationQuotation">Estimated quotation: ₹0.00</strong><div class="translation-small">GST, if applicable, not included</div></div>
       <button type="button" id="estimateTranslation" class="soft">Count words and estimate</button>
     </div>
-    <div class="note">A quotation is only indicative until the client agrees to the counting method. Uploaded DOCX files retain the original paragraph and table structure in export where possible. Mixed inline styling may need correction. PDF files are converted into a new Word document, not a replica of the original page design. Scanned PDFs need text recognition first.</div>
+    <div class="note">The ₹1.80 rate is only a starting estimate and must be adjusted for each language pair, complexity and reviewer cost. Uploaded DOCX files retain paragraphs and tables where possible, but complex formatting and fonts need checking. PDFs become new Word documents; scanned PDFs require OCR first. Submitted text is sent to the configured Gemini service, so confirm confidentiality requirements before uploading sensitive material.</div>
     <div id="translationStatus" class="status" role="status" aria-live="polite"></div>
     <div id="translationProgress" class="translation-small"></div>
     <div id="translationResults"></div>
     <div id="translationActions" class="translation-actions" style="display:none">
-      <button type="button" id="translationDraftDownload" class="secondary">Download working Gujarati Word copy</button>
-      <button type="button" id="translationFinalDownload" disabled>Download translator approved Word copy</button>
+      <button type="button" id="translationDraftDownload" class="secondary">Download working translation in Word</button>
+      <button type="button" id="translationFinalDownload" disabled>Download human approved translation</button>
     </div>
-    <p class="translation-small" id="translationReviewNote">AI output is a working draft. Each passage should be checked against the original Hindi by your translator. Up to four reviewer feedback revisions can be requested per passage in this session.</p>
+    <p class="translation-small" id="translationReviewNote">The source and translation appear side by side for editing. Your bilingual reviewer must check each passage before final export. Up to four AI feedback revisions are available per passage in a browser session. Progress is not saved after refreshing the page.</p>
   </div>
 </div>
 <script>
@@ -177,11 +196,13 @@ async function refineParagraph(id,decision){const idx=currentItems.findIndex(x=>
 function downloadFilenameFromHeader(response,fallback){const cd=response.headers.get('content-disposition')||'';const match=cd.match(/filename="?([^";]+)"?/i);return match&&match[1]?match[1]:fallback}
 async function downloadDoc(kind,button){if(!currentItems||currentItems.length===0){status('There is no reviewed content to download yet.',true);return}const btn=button||(kind==='reviewed'?document.getElementById('downloadReviewed'):document.getElementById('downloadClean')),oldText=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent=kind==='reviewed'?'Preparing marked Word file...':'Preparing clean Word file...'}status(kind==='reviewed'?'Preparing the marked Word review. Large documents can take a little time...':'Preparing the clean revised Word file...');try{const fd=new FormData();fd.append('payload',JSON.stringify(currentItems));fd.append('filename',currentFilename||'document.docx');const r=await fetch('/download/'+kind,{method:'POST',body:fd});if(!r.ok){let message='Download generation failed.';try{const data=await r.json();message=data.detail||message}catch(_){try{message=(await r.text())||message}catch(__){}}throw new Error(message)}const blob=await r.blob();if(!blob||blob.size===0)throw new Error('The server created an empty file. Please try again.');const fallback=(currentFilename||'document.docx').replace(/\.docx$/i,'')+(kind==='reviewed'?'_editorial_review.docx':'_clean_revised.docx');const filename=downloadFilenameFromHeader(r,fallback),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);status(`Download started: ${filename}`)}catch(err){status(err.message||'Download generation failed.',true)}finally{if(btn){btn.disabled=false;btn.textContent=oldText}}}
 
-/* Translation workspace. Proofreading workflow remains independent. */
+/* Independent multilingual translation workspace. Existing proofreading is unchanged. */
 const editorNav = document.getElementById('editorNav');
 const translationNav = document.getElementById('translationNav');
 const editorWorkspace = document.getElementById('editorWorkspace');
 const translationWorkspace = document.getElementById('translationWorkspace');
+const sourceLanguageSelect = document.getElementById('translationSourceLanguage');
+const targetLanguageSelect = document.getElementById('translationTargetLanguage');
 function switchService(toTranslation){
   editorWorkspace.style.display = toTranslation ? 'none' : 'block';
   translationWorkspace.style.display = toTranslation ? 'block' : 'none';
@@ -190,11 +211,14 @@ function switchService(toTranslation){
 }
 editorNav.addEventListener('click', function(){switchService(false)});
 translationNav.addEventListener('click', function(){switchService(true)});
+function languageName(select){return select.options[select.selectedIndex].textContent.trim()}
+function languagePair(){return {source:sourceLanguageSelect.value,target:targetLanguageSelect.value,sourceName:languageName(sourceLanguageSelect),targetName:languageName(targetLanguageSelect)}}
 let translationItems = [];
-let translationFilename = 'Pasted_Hindi_Text.txt';
+let translationFilename = 'Pasted_Source_Text.txt';
 let translationSha = '';
 let translationSourceWords = 0;
 let translationSourceFile = null;
+let translationPair = null;
 function tStatus(message, isError){
   const box = document.getElementById('translationStatus');
   box.style.display = 'block';
@@ -204,17 +228,39 @@ function tStatus(message, isError){
 function quoteUpdate(){
   const rate = Number(document.getElementById('translationRate').value);
   const amount = Number.isFinite(rate) && rate >= 0 ? translationSourceWords * rate : 0;
-  document.getElementById('sourceWordCount').textContent = translationSourceWords.toLocaleString('en-IN') + ' Hindi source words';
+  document.getElementById('sourceWordCount').textContent = translationSourceWords.toLocaleString('en-IN') + ' ' + languageName(sourceLanguageSelect) + ' source words';
   document.getElementById('translationQuotation').textContent = 'Estimated quotation: ₹' + amount.toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
+function clearTranslationOutput(){
+  translationItems=[];translationSourceWords=0;translationSha='';translationSourceFile=null;translationPair=null;
+  document.getElementById('translationResults').replaceChildren();
+  document.getElementById('translationProgress').textContent='';
+  document.getElementById('translationActions').style.display='none';
+  document.getElementById('translationStatus').style.display='none';
+  quoteUpdate();
+}
 document.getElementById('translationRate').addEventListener('input', quoteUpdate);
+sourceLanguageSelect.addEventListener('change', clearTranslationOutput);
+targetLanguageSelect.addEventListener('change', clearTranslationOutput);
+document.getElementById('translationText').addEventListener('input',clearTranslationOutput);
+document.getElementById('translationFile').addEventListener('change',clearTranslationOutput);
+document.getElementById('swapTranslationLanguages').addEventListener('click',function(){
+  const previous=sourceLanguageSelect.value;
+  sourceLanguageSelect.value=targetLanguageSelect.value;
+  targetLanguageSelect.value=previous;
+  clearTranslationOutput();
+});
 function sourceFormData(withModel){
+  const pair=languagePair();
+  if(pair.source===pair.target)throw new Error('Please select two different languages.');
   const data = new FormData();
   const typed = document.getElementById('translationText').value.trim();
   const file = document.getElementById('translationFile').files[0];
   if(typed)data.append('text',typed);
   else if(file)data.append('file',file);
-  else throw new Error('Please paste Hindi text or choose a source document.');
+  else throw new Error('Please paste source text or choose a source document.');
+  data.append('source_language',pair.source);
+  data.append('target_language',pair.target);
   if(withModel)data.append('model',document.getElementById('translationModel').value);
   return data;
 }
@@ -227,31 +273,39 @@ async function requestJson(endpoint, data){
 }
 document.getElementById('estimateTranslation').addEventListener('click',async function(){
   const button = this;button.disabled = true;
-  tStatus('Counting Hindi source words...');
+  const pair=languagePair();
+  tStatus('Counting ' + pair.sourceName + ' source words...');
   try{
     const result = await requestJson('/translation/estimate',sourceFormData(false));
+    if(sourceLanguageSelect.value!==pair.source || targetLanguageSelect.value!==pair.target)return;
     translationSourceWords = result.source_words;
     quoteUpdate();
-    tStatus('Source word count ready. ' + result.passages + ' passages found. This is an indicative quotation.');
+    tStatus('Source word count ready. ' + result.passages + ' passages found. Confirm rates and counting rules for this language pair.');
   }catch(err){tStatus(err.message,true)}
   finally{button.disabled=false}
 });
 document.getElementById('translationForm').addEventListener('submit',async function(event){
-  event.preventDefault();const button=document.getElementById('translateGo');button.disabled=true;
-  translationItems=[];document.getElementById('translationResults').replaceChildren();
-  document.getElementById('translationActions').style.display='none';
-  tStatus('Generating Gujarati translation. An experienced translator must check the output before delivery.');
+  event.preventDefault();
+  const pair=languagePair(),button=document.getElementById('translateGo');
+  button.disabled=true;clearTranslationOutput();
+  tStatus('Generating ' + pair.targetName + ' working translation from ' + pair.sourceName + '. Human verification is required.');
   try{
     const fd=sourceFormData(true);
-    translationSourceFile=fd.get('file') || null;
+    const sourceFile=fd.get('file') || null;
     const result=await requestJson('/translation/translate',fd);
+    if(sourceLanguageSelect.value!==pair.source || targetLanguageSelect.value!==pair.target){
+      tStatus('Language selection changed during translation. Please generate again.',true);
+      return;
+    }
     translationItems=result.items.map(function(item){return Object.assign({},item,{revisions:0})});
     translationFilename=result.filename;
     translationSha=result.source_sha256 || '';
     translationSourceWords=result.source_words;
+    translationSourceFile=sourceFile;
+    translationPair=pair;
     quoteUpdate();renderTranslationItems();
     document.getElementById('translationActions').style.display='flex';
-    tStatus('Gujarati working draft generated for ' + translationSourceWords + ' source words. Please proofread every passage.');
+    tStatus(pair.sourceName + ' to ' + pair.targetName + ' working draft generated. Review every passage before delivery.');
   }catch(err){tStatus(err.message,true)}
   finally{button.disabled=false}
 });
@@ -268,17 +322,18 @@ function updateTranslationApproval(){
 }
 function renderTranslationItems(){
   const list=document.getElementById('translationResults');list.replaceChildren();
-  translationItems.forEach(function(item,index){
+  const pair=translationPair || languagePair();
+  translationItems.forEach(function(item){
     const wrapper=makeElement('section','translation-card');
     wrapper.appendChild(makeElement('h3','', 'Passage '+item.id));
     const panes=makeElement('div','translation-grid');
     const sourceCol=makeElement('div');
-    sourceCol.appendChild(makeElement('div','label','Original Hindi'));
+    sourceCol.appendChild(makeElement('div','label','Original '+pair.sourceName));
     sourceCol.appendChild(makeElement('div','translation-pane',item.original));
     const targetCol=makeElement('div');
-    const label=makeElement('label','label','Gujarati translation, editable');
+    const label=makeElement('label','label',pair.targetName+' translation, editable');
     const target=makeElement('textarea');target.value=item.translated;
-    target.setAttribute('aria-label','Gujarati translation passage '+item.id);
+    target.setAttribute('aria-label',pair.targetName+' translation passage '+item.id);
     target.addEventListener('input',function(){item.translated=target.value;item.reviewed=false;approve.checked=false;updateTranslationApproval()});
     targetCol.appendChild(label);targetCol.appendChild(target);
     panes.appendChild(sourceCol);panes.appendChild(targetCol);wrapper.appendChild(panes);
@@ -289,15 +344,15 @@ function renderTranslationItems(){
     const approve=document.createElement('input');approve.type='checkbox';approve.checked=!!item.reviewed;
     approve.id='translationApproved'+item.id;
     approve.addEventListener('change',function(){item.reviewed=approve.checked && !!item.translated.trim();approve.checked=item.reviewed;updateTranslationApproval()});
-    const approveLabel=makeElement('label','','Translator has verified this passage against the Hindi original');
+    const approveLabel=makeElement('label','','Translator has verified this passage against the '+pair.sourceName+' original');
     approveLabel.htmlFor=approve.id;approveLabel.prepend(approve);
     tools.appendChild(approveLabel);
-    tools.appendChild(makeElement('span','translation-small','Revision feedback used: '+item.revisions+' of 4'));
+    tools.appendChild(makeElement('span','translation-small','AI revision feedback used: '+item.revisions+' of 4'));
     wrapper.appendChild(tools);
     const revision=makeElement('textarea');
     revision.placeholder='Write specific feedback on terminology, meaning or required correction.';
     revision.setAttribute('aria-label','Revision feedback for passage '+item.id);
-    const revisionButton=makeElement('button','soft','Revise this Gujarati passage');
+    const revisionButton=makeElement('button','soft','Revise this '+pair.targetName+' passage');
     revisionButton.type='button';revisionButton.disabled=item.revisions>=4;
     const revisionMessage=makeElement('div','translation-small');
     revisionButton.addEventListener('click',async function(){
@@ -307,13 +362,15 @@ function renderTranslationItems(){
       fd.append('original',item.original);fd.append('translated',item.translated);
       fd.append('feedback',revision.value.trim());fd.append('revision_round',String(item.revisions+1));
       fd.append('model',document.getElementById('translationModel').value);
+      fd.append('source_language',pair.source);fd.append('target_language',pair.target);
       try{
         const result=await requestJson('/translation/revise',fd);
+        if(translationPair!==pair)return;
         item.translated=result.translated;
         item.flags=result.flags;
         item.revisions+=1;
         item.reviewed=false;
-        renderTranslationItems();tStatus('Revision applied to passage '+item.id+'. The translator must verify the revised text.');
+        renderTranslationItems();tStatus('Revision applied to passage '+item.id+'. Please verify the revised text.');
       }catch(err){revisionMessage.textContent=err.message;revisionButton.disabled=false}
     });
     wrapper.appendChild(makeElement('div','label','Reviewer feedback'));
@@ -323,9 +380,9 @@ function renderTranslationItems(){
   updateTranslationApproval();
 }
 async function downloadTranslation(stage){
-  if(!translationItems.length){tStatus('Generate a translation first.',true);return}
+  if(!translationItems.length || !translationPair){tStatus('Generate a translation first.',true);return}
   if(stage==='final' && translationItems.some(function(item){return !item.reviewed || !item.translated.trim()})){
-    tStatus('Please complete translator verification for every passage.',true);return
+    tStatus('Please complete bilingual translator verification for every passage.',true);return
   }
   const button=document.getElementById(stage==='final'?'translationFinalDownload':'translationDraftDownload');
   const old=button.textContent;button.disabled=true;button.textContent='Preparing Word document...';
@@ -335,6 +392,7 @@ async function downloadTranslation(stage){
     fd.append('filename',translationFilename);
     fd.append('source_sha256',translationSha);
     fd.append('stage',stage);
+    fd.append('target_language',translationPair.target);
     if(translationFilename.toLowerCase().endsWith('.docx')){
       if(!translationSourceFile)throw new Error('Original Word file is missing. Please upload it again.');
       fd.append('file',translationSourceFile);
@@ -345,7 +403,7 @@ async function downloadTranslation(stage){
     if(!blob.size)throw new Error('The server returned an empty document.');
     const cd=response.headers.get('content-disposition')||'';
     const match=cd.match(/filename="?([^";]+)"?/i);
-    const filename=match?match[1]:'Gujarati_translation.docx';
+    const filename=match?match[1]:translationPair.targetName+'_translation.docx';
     const url=URL.createObjectURL(blob),anchor=document.createElement('a');
     anchor.href=url;anchor.download=filename;document.body.appendChild(anchor);anchor.click();anchor.remove();
     setTimeout(function(){URL.revokeObjectURL(url)},60000);
