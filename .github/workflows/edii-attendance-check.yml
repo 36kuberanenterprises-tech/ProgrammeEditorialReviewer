@@ -1,0 +1,36 @@
+name: EDII Attendance Build Check
+on:
+  push:
+    branches:
+      - edii-attendance-live-preview
+    paths:
+      - 'attendance-app/**'
+      - '.github/workflows/edii-attendance-check.yml'
+  workflow_dispatch:
+jobs:
+  check-code:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Python syntax without importing credentials
+        run: python -m compileall -q attendance-app
+      - name: Check attendance client JavaScript
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          page = Path("attendance-app/index.html").read_text()
+          match=re.search(r"<script>([\s\S]*?)</script>",page)
+          assert match and match.group(1).strip(), "Missing client script"
+          Path("/tmp/edii_attendance.js").write_text(match.group(1))
+          PY
+          node --check /tmp/edii_attendance.js
+      - name: Check expected archive endpoints exist
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          server=Path("attendance-app/server.py").read_text()
+          for route in ("apiAdminSyncArchive","apiAdminArchiveStatus","apiAdminExport","apiAttendance"):
+              assert route in server, route
+          assert Path("attendance-app/google_archive/Code.gs").is_file()
+          PY
