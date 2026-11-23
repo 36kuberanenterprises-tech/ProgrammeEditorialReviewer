@@ -66,7 +66,53 @@ function dataTable(headers,rows){if(!rows.length)return '<div class="empty">No r
 function photoButton(r){if(!r.photoId)return '';if(r.photoId==='PREVIEW')return '<span class="muted">Preview only</span>';return `<button class="btn secondary view-photo" data-id="${escapeHTML(r.photoId)}">View selfie</button>`;}
 async function showPhoto(id){try{let r=await call('apiPhoto',{fileId:id});$('modalImage').src=r.dataUrl;$('photoModal').classList.remove('hidden');}catch(e){alert(e.message);}}
 document.addEventListener('click',e=>{const b=e.target.closest('.view-photo');if(b)showPhoto(b.dataset.id);});$('closeModal').onclick=()=>{$('photoModal').classList.add('hidden');$('modalImage').src='';};
-async function loadMyRecords(){try{const all=await call('apiList');records=all.filter(r=>r.staffId===user.id);let byDate={};records.filter(r=>r.action==='IN').forEach(r=>{byDate[r.date]=true});let complete=new Set(records.filter(r=>r.action==='SUBMITTED').map(r=>r.date)),present=Object.keys(byDate).length;$('presentDays').textContent=present;$('completedDays').textContent=complete.size;$('incompleteDays').textContent=Math.max(0,present-complete.size);let attendance=records.filter(r=>['IN','OUT'].includes(r.action));$('myAttendance').innerHTML=dataTable(['Date','Action','Time (IST)','Work location','GPS','Photograph'],attendance.map(r=>[escapeHTML(r.date),escapeHTML(r.action==='IN'?'Check In':'Check Out'),escapeHTML(humanIST(r.time)),escapeHTML(r.location),r.mapUrl?`<a href="${escapeHTML(r.mapUrl)}" target="_blank" rel="noopener noreferrer">View map</a>`:'',photoButton(r)]));let plans=records.filter(r=>r.action==='PLAN');$('myPlans').innerHTML=dataTable(['Date','Saved on (IST)','Daily work plan'],plans.map(r=>[escapeHTML(r.date),escapeHTML(humanIST(r.time)),escapeHTML(r.plan)]));}catch(e){alert(e.message);}}
+function clockIST(t){
+ if(!t)return '';
+ const date=new Date(t);
+ if(Number.isNaN(date.getTime()))return String(t);
+ return new Intl.DateTimeFormat('en-IN',{hour:'numeric',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'}).format(date);
+}
+function groupedDays(items){
+ const map=new Map();
+ for(const item of items){if(!item.date)continue;if(!map.has(item.date))map.set(item.date,{date:item.date});map.get(item.date)[item.action]=item;}
+ return Array.from(map.values()).sort((a,b)=>b.date.localeCompare(a.date));
+}
+function selfieHistoryCell(r){
+ if(!r)return '<span class="muted">Not recorded</span>';
+ const evidence=photoButton(r);
+ const map=r.mapUrl?'<div><a href="'+escapeHTML(r.mapUrl)+'" target="_blank" rel="noopener noreferrer">GPS map</a></div>':'';
+ return evidence+map;
+}
+async function loadMyRecords(){
+ try{
+  const all=await call('apiList');
+  records=all.filter(r=>r.staffId===user.id);
+  const days=groupedDays(records);
+  const present=days.filter(d=>d.IN).length;
+  const complete=days.filter(d=>d.SUBMITTED).length;
+  $('presentDays').textContent=present;
+  $('completedDays').textContent=complete;
+  $('incompleteDays').textContent=Math.max(0,present-complete);
+  $('myAttendance').innerHTML=dataTable(
+    ['Date','Morning Selfie','Check In Time','Work Plan','Evening Selfie','Checkout Time','Status','Submitted'],
+    days.map(d=>[
+      escapeHTML(d.date),
+      selfieHistoryCell(d.IN),
+      d.IN?escapeHTML(clockIST(d.IN.time)):'Not recorded',
+      d.PLAN?escapeHTML(d.PLAN.plan):'<span class="muted">Not saved</span>',
+      selfieHistoryCell(d.OUT),
+      d.OUT?escapeHTML(clockIST(d.OUT.time)):'Not recorded',
+      d.SUBMITTED?'Completed':d.OUT?'Awaiting submission':d.IN?'In progress':'Not marked',
+      d.SUBMITTED?'Yes':'No'
+    ])
+  );
+  const plans=records.filter(r=>r.action==='PLAN').sort((a,b)=>b.date.localeCompare(a.date));
+  $('myPlans').innerHTML=dataTable(
+    ['Date','Saved on (IST)','Daily work plan'],
+    plans.map(p=>[escapeHTML(p.date),escapeHTML(humanIST(p.time)),escapeHTML(p.plan)])
+  );
+ }catch(e){alert(e.message);}
+}
 $('refreshHistory').onclick=loadMyRecords;$('refreshPlans').onclick=loadMyRecords;
 
 async function loadDashboard(){
@@ -78,8 +124,8 @@ async function loadDashboard(){
   const c=action=>rec.filter(p=>p.actions[action]).length;
   const stats=[['Active Staff',active.length],['Morning Check Ins',c('IN')],['Saved Work Plans',c('PLAN')],['Evening Check Outs',c('OUT')],['Completed Days',c('SUBMITTED')]];
   $('dashboardStats').innerHTML=stats.map(v=>'<div class="stat"><strong>'+v[1]+'</strong><span>'+escapeHTML(v[0])+'</span></div>').join('');
-  const time=r=>r?escapeHTML(humanIST(r.time)):'Pending';
-  $('dashboardTable').innerHTML=dataTable(['Staff ID','Employee','Morning','Work Plan','Evening','Status','Details'],rec.map(p=>[escapeHTML(p.id),escapeHTML(p.name),time(p.actions.IN),p.actions.PLAN?'Saved':'Pending',time(p.actions.OUT),p.actions.SUBMITTED?'Completed':'Pending','<button class="btn secondary staff-detail" data-id="'+escapeHTML(p.id)+'">View Records</button>']));
+  const time=r=>r?escapeHTML(clockIST(r.time)):'Pending';
+  $('dashboardTable').innerHTML=dataTable(['Sl No','Employee ID','Employee','Login','Work Plan','Logged Out','Status','Details'],rec.map((p,i)=>[String(i+1),escapeHTML(p.id),escapeHTML(p.name),time(p.actions.IN),p.actions.PLAN?'Updated':'Not saved',time(p.actions.OUT),p.actions.SUBMITTED?'Submitted':p.actions.IN?'In progress':'Not recorded','<button class="btn secondary staff-detail" data-id="'+escapeHTML(p.id)+'">View Records</button>']));
  }catch(e){$('dashboardTable').innerHTML='<div class="empty">'+escapeHTML(e.message)+'</div>';}
 }
 $('refreshDashboard').onclick=loadDashboard;
