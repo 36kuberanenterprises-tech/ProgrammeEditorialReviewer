@@ -14,6 +14,7 @@ from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response
 from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
+from google_archive import create_tables, enqueue, queue_existing, sync_pending, stats as archive_stats, configured as archive_configured, test_archive
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 TZ = ZoneInfo("Asia/Kolkata")
@@ -78,6 +79,7 @@ def init_database():
         c.execute("""CREATE TABLE IF NOT EXISTS audit(
             happened_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), actor TEXT NOT NULL,
             action TEXT NOT NULL, target TEXT NOT NULL, details TEXT)""")
+        create_tables(c)
         n = c.execute("SELECT COUNT(*) AS n FROM staff").fetchone()["n"]
         if n == 0:
             pin = os.getenv("INITIAL_ADMIN_PIN","")
@@ -151,7 +153,55 @@ def health():
         return JSONResponse({"status":"setup_required","message":"Database connection required"},status_code=503)
     with connect() as c:
         c.execute("SELECT 1").fetchone()
-    return {"status":"ok","storage":"postgres","timeZone":"Asia/Kolkata"}
+        archived = archive_stats(c)
+    return {"status":"ok","storage":"postgres","timeZone":"Asia/Kolkata",
+            "googleArchiveConfigured":archived["configured"],"archivePending":archived["pending"],
+            "archiveSaved":archived["archived"]}
+
+def archive_after_save():
+    """The primary database record is committed before attempting the external archive.
+    Failed archive deliveries remain queued for retry. Never delete on failure.
+    """
+    if not archive_configured():
+        return {"configured":False,"message":"Google Sheets and Drive archive activation pending"}
+    try:
+        with connect() as connection:
+            return sync_pending(connection,limit=3)
+    except Exception:
+        return {"configured":True,"message":"Cloud archive retry pending"}
+
+
+@app.post("/apiAdminArchiveStatus")
+async def admin_archive_status(request:Request):
+    actor=user_for(request);only_admin(actor)
+    with connect() as connection:
+        return archive_stats(connection)
+
+
+@app.post("/apiAdminTestArchive")
+async def admin_test_archive(request:Request):
+    actor=user_for(request);only_admin(actor)
+    if not archive_configured():
+        return {"ok":False,"configured":False,"message":"Complete the one-time Google Apps Script authorisation and set the two Render environment variables."}
+    try:
+        result=test_archive()
+        return {"ok":bool(result.get("ok")),"configured":True,"message":"Google archival endpoint verified"}
+    except Exception as exc:
+        return {"ok":False,"configured":True,"message":str(exc)[:230]}
+
+
+@app.post("/apiAdminSyncArchive")
+async def admin_sync_archive(request:Request):
+    actor=user_for(request);only_admin(actor)
+    if not archive_configured():
+        return {"configured":False,"message":"Google archive activation is pending"}
+    with connect() as connection:
+        total=queue_existing(connection)
+        connection.commit()
+        result=sync_pending(connection,limit=5)
+    result["sourceRecords"]=total
+    return result
+
 
 @app.post("/apiLogin")
 async def login(request:Request):
@@ -304,13 +354,16 @@ async def attendance(request:Request):
             if not plan:
                 raise HTTPException(400,"Save today's work plan first")
         photo_id=secrets.token_hex(18)
+        record_id=secrets.token_hex(18)
         c.execute("INSERT INTO photos(id,staff_id,image) VALUES(%s,%s,%s)",
                   (photo_id,u["id"],photo))
         c.execute("""INSERT INTO attendance(id,day,staff_id,action,location,remarks,
                   latitude,longitude,accuracy,captured_at,gps_at,photo_id)
                   VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                  (secrets.token_hex(18),date,u["id"],action,location,remarks,lat,lon,acc,capture,gps,photo_id))
-    return {"ok":True,"date":date.isoformat()}
+                  (record_id,date,u["id"],action,location,remarks,lat,lon,acc,capture,gps,photo_id))
+        enqueue(c,"attendance",record_id)
+    archived=archive_after_save()
+    return {"ok":True,"date":date.isoformat(),"archive":archived}
 
 @app.post("/apiPlan")
 async def plan(request:Request):
@@ -328,7 +381,8 @@ async def plan(request:Request):
         if "OUT" in events:
             raise HTTPException(400,"Work plan must be saved before checkout")
         c.execute("INSERT INTO work_plans(staff_id,day,plan) VALUES(%s,%s,%s)",(u["id"],today(),text))
-    return {"ok":True}
+        enqueue(c,"plan",u["id"]+":"+today().isoformat())
+    return {"ok":True,"archive":archive_after_save()}
 
 @app.post("/apiSubmitDay")
 async def submit_day(request:Request):
@@ -340,7 +394,8 @@ async def submit_day(request:Request):
         if "SUBMITTED" in events:
             raise HTTPException(409,"Already submitted")
         c.execute("INSERT INTO submitted_days(staff_id,day) VALUES(%s,%s)",(u["id"],today()))
-    return {"ok":True}
+        enqueue(c,"submitted",u["id"]+":"+today().isoformat())
+    return {"ok":True,"archive":archive_after_save()}
 
 @app.post("/apiList")
 async def all_records(request:Request):
@@ -433,7 +488,9 @@ async def save_staff(request:Request):
             c.execute("INSERT INTO staff(id,name,role,salt,pin_hash,updated_by) VALUES(%s,%s,%s,%s,%s,%s)",
                       (sid,name,role,salt,digest,u["id"]))
         add_audit(c,u["id"],"RESET_STAFF_PIN" if (exists and newpin) else ("UPDATE_STAFF" if exists else "ADD_STAFF"),sid,"Role "+role)
-    return {"ok":True,"pinReset":bool(exists and newpin),"loginUnlocked":bool(newpin)}
+        enqueue(c,"staff",sid)
+    result=archive_after_save()
+    return {"ok":True,"pinReset":bool(exists and newpin),"loginUnlocked":bool(newpin),"archive":result}
 
 @app.post("/apiStaffUnlock")
 async def unlock_staff(request:Request):
@@ -462,7 +519,8 @@ async def deactivate(request:Request):
         c.execute("UPDATE staff SET active=FALSE,updated_by=%s,updated_at=NOW() WHERE id=%s",(u["id"],sid))
         c.execute("DELETE FROM sessions WHERE staff_id=%s",(sid,))
         add_audit(c,u["id"],"DEACTIVATE_STAFF",sid,"Previous attendance retained")
-    return {"ok":True}
+        enqueue(c,"staff",sid)
+    return {"ok":True,"archive":archive_after_save()}
 
 @app.post("/apiChangePin")
 async def change_pin(request:Request):
