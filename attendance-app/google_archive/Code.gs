@@ -100,7 +100,14 @@ function archiveAttendance_(book,e) {
   const sh=sheet_(book,'Attendance');
   const recId=clean_(p.recordId,100);
   if(!recId || !p.photoBase64) throw Error('Attendance ID or photograph missing');
-  if(rowBy_(sh,16,recId)>0) return 'duplicate ignored';
+  const earlier = rowBy_(sh,16,recId);
+  if (earlier>0) {
+    // Recover a missing thumbnail without changing the original archived record.
+    const existing=sh.getRange(earlier,1,1,16).getValues()[0];
+    try { placePrivateSelfie_(book,existing[1],existing[0],existing[3],existing[11]); }
+    catch (err) { console.log('Thumbnail needs retry: '+err.message); }
+    return 'duplicate ignored';
+  }
   const lat=Number(p.latitude),lon=Number(p.longitude),accuracy=Number(p.accuracy);
   if(!isFinite(lat)||!isFinite(lon)||!isFinite(accuracy))throw Error('Invalid GPS');
   const action=p.action==='OUT'?'OUT':p.action==='IN'?'IN':null;
@@ -120,8 +127,89 @@ function archiveAttendance_(book,e) {
     lat,lon,accuracy,photo.getUrl(),photo.getId(),iso_(p.capturedAt),
     iso_(p.gpsAt),map,recId
   ]);
+  try { placePrivateSelfie_(book,p.staffId,p.date,action,photo.getId()); }
+  catch (err) { console.log('Selfie archived; thumbnail needs retry: '+err.message); }
   return 'archived';
 }
+
+/**
+ * Embed a small private Drive selfie above its designated cell.
+ * This uses the image Blob, not a public IMAGE() URL.
+ * The original photograph remains private in Drive, and its URL stays in Attendance.
+ */
+function previewDate_(v) {
+  if(v instanceof Date && !isNaN(v.getTime())) {
+    return Utilities.formatDate(v,'Asia/Kolkata','yyyy-MM-dd');
+  }
+  if(typeof v==='number' && isFinite(v)) {
+    return Utilities.formatDate(new Date(Math.round((v-25569)*86400000)),'UTC','yyyy-MM-dd');
+  }
+  const str=String(v||'').trim();
+  if(/^\d{5}(?:\.0+)?$/.test(str)) return previewDate_(Number(str));
+  if(/^\d{4}-\d{2}-\d{2}/.test(str)) return str.substring(0,10);
+  return str;
+}
+function placePrivateSelfie_(book, staffId, day, action, driveFileId) {
+  const sid=clean_(staffId,30).trim(),date=previewDate_(day),fileId=clean_(driveFileId,200).trim();
+  if(!sid||!date||!fileId||(action!=='IN'&&action!=='OUT'))return 'insufficient data';
+  SpreadsheetApp.flush();
+  for(const sheet of book.getSheets()) {
+    if(!/^Employee \d{2}$/.test(sheet.getName()))continue;
+    if(String(sheet.getRange('B2').getDisplayValue()).trim()!==sid)continue;
+    const n=Math.min(sheet.getMaxRows()-5,995);
+    if(n<1)return 'no attendance rows';
+    const dates=sheet.getRange(6,1,n,1).getValues();
+    let row=0;
+    for(let i=0;i<dates.length;i++) {
+      if(previewDate_(dates[i][0])===date){row=i+6;break;}
+    }
+    if(!row)return 'date not yet calculated';
+    const col=action==='IN'?2:5;
+    const tag='EDII_SELFIE_'+fileId;
+    const imgs=sheet.getImages();
+    for(const im of imgs) {
+      if(im.getAltTextTitle()===tag)return 'already visible';
+    }
+    // Google Apps Script permits a private Drive Blob as an anchored image.
+    // Inserting the image does not change Drive file sharing permissions.
+    const file=DriveApp.getFileById(fileId);
+    const blob=file.getBlob();
+    if(blob.getBytes().length>1900000)throw Error('Photo too large for an embedded preview');
+    sheet.setColumnWidth(col,120);
+    sheet.setRowHeight(row,90);
+    sheet.insertImage(blob,col,row,6,5)
+      .setWidth(76).setHeight(76)
+      .setAltTextTitle(tag)
+      .setAltTextDescription('Private '+(action==='IN'?'morning':'evening')+
+         ' attendance selfie for '+sid+' on '+date);
+    return 'embedded';
+  }
+  return 'employee sheet not found';
+}
+/**
+ * Backfills thumbnails from all existing rows in the private archive.
+ * This does not erase, replace or change existing attendance evidence.
+ * Can be run again safely; already embedded photos are skipped.
+ */
+function backfillEDIIPrivateSelfiePreviews() {
+  const book=SpreadsheetApp.openById(EDII_SHEET_ID);
+  const att=sheet_(book,'Attendance');
+  const end=att.getLastRow();
+  if(end<2)return;
+  const rows=att.getRange(2,1,end-1,16).getValues();
+  let inserted=0,skipped=0,errors=0;
+  rows.forEach(function(r){
+    if(!r[1] || !r[11] || (r[3]!=='IN'&&r[3]!=='OUT')) return;
+    try {
+      const result=placePrivateSelfie_(book,r[1],r[0],r[3],r[11]);
+      if(result==='embedded')inserted++;
+      else skipped++;
+    }catch(e){errors++;console.log('Preview '+String(r[1])+' '+String(r[0])+': '+e.message);}
+  });
+  console.log('Private selfie previews embedded: '+inserted+
+              ', already present or unmatched: '+skipped+', errors: '+errors);
+}
+
 function archivePlan_(book,e) {
   const p=e.data||{};
   const sh=sheet_(book,'Work Plans');
