@@ -21,7 +21,7 @@
    <button class="btn secondary" id="archiveStatusBtn">Refresh Status</button>
    <button class="btn secondary" id="archiveTestBtn">Test Google Connection</button>
    <button class="btn" id="archiveSyncBtn">Sync Previous Records</button>
-   <a class="btn secondary" href="/apiAdminExport" download>Download Full Backup ZIP</a>
+   <button class="btn secondary" id="archiveDownloadBtn" type="button">Download Full Backup ZIP</button>
   </div>
   <p id="archiveStatusDetail" class="hint" role="status"></p>
   <details style="margin-top:12px"><summary style="font-weight:650;cursor:pointer;">One time Google activation instructions</summary>
@@ -156,6 +156,33 @@ async function fetchArchiveStatus(){
  try{archiveSummary(await call('apiAdminArchiveStatus'));}
  catch(e){$('archiveStatusDetail').textContent='Could not verify archive: '+e.message;}
 }
+async function downloadFullAttendanceBackup(){
+ const button=$('archiveDownloadBtn');
+ const output=$('archiveStatusDetail');
+ if(!user||user.role!=='ADMIN'){output.textContent='Please sign in as an administrator to download this confidential backup.';return;}
+ button.disabled=true;button.textContent='Preparing backup...';
+ output.textContent='Preparing confidential staff attendance ZIP. Keep this page open until the download begins.';
+ try{
+   const response=await fetch('/apiAdminExport',{method:'GET',credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/zip'}});
+   if(!response.ok){
+     let detail='Backup could not be downloaded (HTTP '+response.status+').';
+     try{const parsed=await response.json();detail=parsed.detail||parsed.error||detail;}catch(_){}
+     if(response.status===401||response.status===403)detail+=' Please sign in with an active administrator account on this same website and retry.';
+     throw Error(detail);
+   }
+   const archive=await response.blob();
+   if(archive.size<100||!archive.type.includes('zip'))throw Error('The server did not return a valid ZIP backup. Please retry.');
+   const objectUrl=URL.createObjectURL(archive);
+   const a=document.createElement('a');
+   a.href=objectUrl;a.download='EDII_Attendance_Full_Backup_'+todayIST()+'.zip';
+   a.style.display='none';document.body.appendChild(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
+   output.textContent='Backup download requested ('+(archive.size/1048576).toFixed(2)+' MB). Check the Downloads folder. Keep this ZIP private.';
+ }catch(e){
+   output.textContent='Backup not downloaded: '+e.message+' You can also check the Render service logs under your administrator account.';
+ }finally{button.disabled=false;button.textContent='Download Full Backup ZIP';}
+}
+$('archiveDownloadBtn').onclick=downloadFullAttendanceBackup;
 $('archiveStatusBtn').onclick=fetchArchiveStatus;
 $('archiveTestBtn').onclick=async()=>{
  const btn=$('archiveTestBtn');btn.disabled=true;
