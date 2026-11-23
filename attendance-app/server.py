@@ -13,6 +13,7 @@ import psycopg
 from psycopg.rows import dict_row
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response
+from archive_export import zip_backup
 from PIL import Image, ImageDraw, ImageFont, ImageOps, UnidentifiedImageError
 from google_archive import create_tables, enqueue, queue_existing, sync_pending, stats as archive_stats, configured as archive_configured, test_archive
 
@@ -201,6 +202,16 @@ async def admin_sync_archive(request:Request):
         result=sync_pending(connection,limit=5)
     result["sourceRecords"]=total
     return result
+
+
+@app.get("/apiAdminExport")
+def admin_export(request:Request):
+    actor=user_for(request);only_admin(actor)
+    with connect() as connection:
+        data=zip_backup(connection)
+    return Response(content=data,media_type="application/zip",headers={
+       "Content-Disposition":"attachment; filename=EDII_Attendance_Full_Backup_"+today().isoformat()+".zip"
+    })
 
 
 @app.post("/apiLogin")
