@@ -23,7 +23,7 @@ HERE = Path(__file__).parent
 
 def connect():
     if not DB:
-        raise RuntimeError("Persistent database is not configured")
+        raise HTTPException(status_code=503, detail="Secure database connection is being set up by the administrator.")
     return psycopg.connect(DB, row_factory=dict_row, connect_timeout=15)
 
 def now_ist():
@@ -43,6 +43,8 @@ def add_audit(conn, actor, action, target, details=""):
                  (actor,action,target,str(details)[:300]))
 
 def init_database():
+    if not DB:
+        return
     with connect() as c:
         c.execute("""CREATE TABLE IF NOT EXISTS staff(
             id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL,
@@ -145,6 +147,8 @@ def homepage():
 
 @app.get("/health")
 def health():
+    if not DB:
+        return JSONResponse({"status":"setup_required","message":"Database connection required"},status_code=503)
     with connect() as c:
         c.execute("SELECT 1").fetchone()
     return {"status":"ok","storage":"postgres","timeZone":"Asia/Kolkata"}
