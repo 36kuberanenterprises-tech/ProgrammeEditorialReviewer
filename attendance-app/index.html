@@ -18,7 +18,7 @@
 </div>
 <div id="historyView" class="card hidden"><div class="row space"><h2 class="section-title">My Attendance History</h2><button class="btn secondary" id="refreshHistory">Refresh</button></div><div class="stats"><div class="stat"><strong id="presentDays">0</strong><span>Days checked in</span></div><div class="stat"><strong id="completedDays">0</strong><span>Days submitted</span></div><div class="stat"><strong id="incompleteDays">0</strong><span>Days pending</span></div></div><div id="myAttendance" class="tablewrap"></div></div>
 <div id="plansView" class="card hidden"><div class="row space"><h2 class="section-title">My Daily Work Plans</h2><button class="btn secondary" id="refreshPlans">Refresh</button></div><div id="myPlans" class="tablewrap"></div></div>
-<div id="manageView" class="card hidden"><h2 class="section-title">Manage Employees</h2><p class="hint">Add employees, update their names and roles, reset their PINs, or deactivate accounts. Deactivation preserves past attendance.</p><div class="grid2"><label class="field">Staff ID<input id="editId" maxlength="30" placeholder="Example STAFF002"></label><label class="field">Employee name<input id="editName" maxlength="80" placeholder="Full name"></label><label class="field">Role<select id="editRole"><option value="STAFF">Staff</option><option value="ADMIN">Administrator</option></select></label><label class="field">New six digit PIN<input id="editPin" type="password" inputmode="numeric" maxlength="6" placeholder="Required for new staff"></label></div><div class="row"><button class="btn" id="saveStaff">Save Employee</button><button class="btn secondary" id="clearStaff">Clear</button></div><p id="staffMessage" class="status" aria-live="polite">Select an employee below to edit, or enter a new employee.</p><div id="staffTable" class="tablewrap"></div></div>
+<div id="manageView" class="card hidden"><h2 class="section-title">Manage Employees</h2><p class="hint">Add employees, update their names and roles, reset PINs and unlock temporarily blocked logins. If a new PIN is saved, the old PIN stops working immediately. Deactivation preserves past attendance.</p><div class="grid2"><label class="field">Staff ID<input id="editId" maxlength="30" placeholder="Example STAFF002"></label><label class="field">Employee name<input id="editName" maxlength="80" placeholder="Full name"></label><label class="field">Role<select id="editRole"><option value="STAFF">Staff</option><option value="ADMIN">Administrator</option></select></label><label class="field">New or reset six digit PIN<input id="editPin" type="password" inputmode="numeric" maxlength="6" placeholder="Enter new PIN to reset access" autocomplete="new-password"></label><label class="field">Confirm new PIN<input id="editPinConfirm" type="password" inputmode="numeric" maxlength="6" placeholder="Repeat the new six digit PIN" autocomplete="new-password"></label></div><div class="row"><button class="btn" id="saveStaff">Save Employee</button><button class="btn secondary" id="clearStaff">Clear</button></div><p id="staffMessage" class="status" aria-live="polite">Select an employee below to edit, or enter a new employee.</p><div id="staffTable" class="tablewrap"></div></div>
 <div id="allView" class="card hidden"><div class="row space"><h2 class="section-title">All Staff Attendance</h2><button class="btn secondary" id="downloadCsv">Download CSV</button></div><div class="filterbar"><label class="field">Staff filter<input id="filterStaff" placeholder="All staff"></label><label class="field">From<input type="date" id="filterFrom"></label><label class="field">To<input type="date" id="filterTo"></label><button class="btn secondary" id="refreshAll">Refresh</button></div><div id="allTable" class="tablewrap"></div></div>
 <div id="accountView" class="card hidden"><h2 class="section-title">Change My PIN</h2><p class="hint">Keep your PIN private. Never share it with colleagues.</p><label class="field">Current PIN<input id="oldPin" type="password" inputmode="numeric" maxlength="6"></label><label class="field">New six digit PIN<input id="newPin" type="password" inputmode="numeric" maxlength="6"></label><button class="btn" id="changePin">Update PIN</button><p id="pinMessage" class="status">Enter your current and new PIN.</p></div>
 </section></main><div class="footer">EDII Staff Attendance Monitor | GPS evidence depends on device permissions and accuracy</div>
@@ -141,11 +141,75 @@ $('downloadMaster').onclick=async()=>{try{
 };
 $('quickAddEmployee').onclick=()=>{setView('manageView');clearStaffForm();};
 document.addEventListener('click',e=>{let el=e.target.closest('.staff-detail');if(el){$('filterStaff').value=el.dataset.id;setView('allView');}});
-async function loadStaff(){if(user.role!=='ADMIN')return;try{staffList=await call('apiStaffList');$('staffTable').innerHTML=dataTable(['Staff ID','Name','Role','Status','Actions'],staffList.map(p=>[escapeHTML(p.id),escapeHTML(p.name),escapeHTML(p.role),`<span class="pill ${p.active?'':'inactive'}">${p.active?'Active':'Inactive'}</span>`,`<button class="btn secondary edit-staff" data-id="${escapeHTML(p.id)}">Edit</button> ${p.active&&p.id!==user.id?`<button class="btn danger disable-staff" data-id="${escapeHTML(p.id)}">Deactivate</button>`:''}`]));}catch(e){$('staffMessage').textContent=e.message;}}
-function clearStaffForm(){$('editId').value='';$('editId').readOnly=false;$('editName').value='';$('editPin').value='';$('editRole').value='STAFF';$('staffMessage').textContent='Enter new employee details or select someone to edit.';}
+async function loadStaff(){
+ if(user.role!=='ADMIN')return;
+ try{
+  staffList=await call('apiStaffList');
+  $('staffTable').innerHTML=dataTable(['Staff ID','Name','Role','Status','Login Access','Actions'],staffList.map(p=>[
+   escapeHTML(p.id),escapeHTML(p.name),escapeHTML(p.role),
+   '<span class="pill '+(p.active?'':'inactive')+'">'+(p.active?'Active':'Inactive')+'</span>',
+   p.loginLocked?'<span class="pill inactive">Temporarily locked</span>':p.active?'Ready':'Disabled',
+   '<button class="btn secondary edit-staff" data-id="'+escapeHTML(p.id)+'">Edit</button> '+
+   (p.active?'<button class="btn secondary reset-staff-pin" data-id="'+escapeHTML(p.id)+'">Reset PIN</button> ':'')+
+   (p.loginLocked?'<button class="btn secondary unlock-staff" data-id="'+escapeHTML(p.id)+'">Unlock</button> ':'')+
+   (p.active&&p.id!==user.id?'<button class="btn danger disable-staff" data-id="'+escapeHTML(p.id)+'">Deactivate</button>':'')
+  ]));
+ }catch(e){$('staffMessage').textContent=e.message;}
+}
+function clearStaffForm(){
+ $('editId').value='';$('editId').readOnly=false;$('editName').value='';
+ $('editPin').value='';$('editPinConfirm').value='';$('editRole').value='STAFF';
+ $('staffMessage').textContent='Enter new employee details or select an employee to edit or reset the PIN.';
+}
+function selectStaffForEdit(id,reset=false){
+ const p=staffList.find(x=>x.id===id);if(!p)return;
+ $('editId').value=p.id;$('editId').readOnly=true;
+ $('editName').value=p.name;$('editRole').value=p.role;
+ $('editPin').value='';$('editPinConfirm').value='';
+ $('staffMessage').textContent=reset
+  ?'Resetting the PIN for '+p.id+'. Enter a new six digit PIN twice and click Save Employee. This also unlocks the account.'
+  :'Editing '+p.id+'. Leave both PIN fields blank if the existing PIN should remain unchanged.';
+ if(reset)$('editPin').focus();else $('editName').focus();
+}
 $('clearStaff').onclick=clearStaffForm;
-document.addEventListener('click',async e=>{const edit=e.target.closest('.edit-staff'),disable=e.target.closest('.disable-staff');if(edit){const p=staffList.find(x=>x.id===edit.dataset.id);if(!p)return;$('editId').value=p.id;$('editId').readOnly=true;$('editName').value=p.name;$('editRole').value=p.role;$('editPin').value='';$('staffMessage').textContent='Editing '+p.id+'. Leave PIN blank to keep it unchanged.';window.scrollTo({top:0,behavior:'smooth'});}if(disable){const id=disable.dataset.id;if(!confirm('Deactivate '+id+'? This prevents login but keeps past records.'))return;try{await call('apiStaffDeactivate',{staffId:id});await loadStaff();$('staffMessage').textContent=id+' deactivated. Historical attendance retained.';}catch(err){alert(err.message);}}});
-$('saveStaff').onclick=async()=>{try{$('saveStaff').disabled=true;const id=$('editId').value.trim().toUpperCase(),name=$('editName').value.trim(),pin=$('editPin').value,role=$('editRole').value;await call('apiStaffSave',{staffId:id,name,pin,role});clearStaffForm();await loadStaff();$('staffMessage').textContent='Employee saved successfully.';}catch(e){$('staffMessage').textContent=e.message;}finally{$('saveStaff').disabled=false;}};
+document.addEventListener('click',async e=>{
+ const edit=e.target.closest('.edit-staff');
+ const reset=e.target.closest('.reset-staff-pin');
+ const disable=e.target.closest('.disable-staff');
+ const unlock=e.target.closest('.unlock-staff');
+ if(edit){selectStaffForEdit(edit.dataset.id,false);return;}
+ if(reset){selectStaffForEdit(reset.dataset.id,true);return;}
+ if(unlock){
+  const id=unlock.dataset.id;
+  if(!confirm('Clear the temporary login lock for '+id+'? The existing PIN will remain unchanged.'))return;
+  try{await call('apiStaffUnlock',{staffId:id});await loadStaff();$('staffMessage').textContent=id+' unlocked. They can now log in using their current PIN.';}
+  catch(err){$('staffMessage').textContent=err.message;}
+  return;
+ }
+ if(disable){
+  const id=disable.dataset.id;
+  if(!confirm('Deactivate '+id+'? This prevents login but keeps past records.'))return;
+  try{await call('apiStaffDeactivate',{staffId:id});await loadStaff();$('staffMessage').textContent=id+' deactivated. Historical attendance retained.';}
+  catch(err){$('staffMessage').textContent=err.message;}
+ }
+});
+$('saveStaff').onclick=async()=>{
+ try{
+  $('saveStaff').disabled=true;
+  const id=$('editId').value.trim().toUpperCase(),name=$('editName').value.trim(),
+    pin=$('editPin').value,confirmPin=$('editPinConfirm').value,role=$('editRole').value;
+  if(pin!==confirmPin)throw Error('The two PIN entries do not match. Enter the same six digit PIN in both fields.');
+  if(pin&&!/^\d{6}$/.test(pin))throw Error('The new PIN must contain exactly six digits.');
+  const wasExisting=staffList.some(p=>p.id===id);
+  const result=await call('apiStaffSave',{staffId:id,name,pin,role});
+  clearStaffForm();
+  await loadStaff();
+  $('staffMessage').textContent=result.pinReset
+   ?'PIN reset successfully for '+id+'. Previous login attempts have been cleared. Give the new PIN privately to the employee.'
+   :wasExisting?'Employee '+id+' updated successfully.':'Employee '+id+' created. Give the assigned PIN privately to the employee.';
+ }catch(e){$('staffMessage').textContent=e.message;}
+ finally{$('saveStaff').disabled=false;}
+};
 async function loadAll(){if(user.role!=='ADMIN')return;try{allRecords=await call('apiList',{from:$('filterFrom').value,to:$('filterTo').value});renderAll();}catch(e){alert(e.message);}}
 function renderAll(){const id=$('filterStaff').value.trim().toUpperCase();const a=allRecords.filter(r=>!id||String(r.staffId).toUpperCase().includes(id));$('allTable').innerHTML=dataTable(['Date','Staff ID','Employee','Action','Time (IST)','Work location / plan','GPS','Photo'],a.map(r=>[escapeHTML(r.date),escapeHTML(r.staffId),escapeHTML(r.staffName),escapeHTML(r.action),escapeHTML(humanIST(r.time)),escapeHTML(r.action==='PLAN'?r.plan:r.location),r.mapUrl?`<a href="${escapeHTML(r.mapUrl)}" target="_blank" rel="noopener noreferrer">Map</a>`:'',photoButton(r)]));}
 $('filterStaff').oninput=renderAll;$('refreshAll').onclick=loadAll;
