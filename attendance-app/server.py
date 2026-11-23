@@ -390,9 +390,9 @@ async def staff_list(request:Request):
     u=user_for(request);only_admin(u)
     with connect() as c:
         rows=c.execute("""SELECT st.id,st.name,st.role,st.active,
-            (at.locked_until IS NOT NULL AND at.locked_until>NOW()) AS login_locked,
-            at.locked_until FROM staff st
-            LEFT JOIN attempts at ON at.staff_id=st.id
+            (la.locked_until IS NOT NULL AND la.locked_until>NOW()) AS login_locked,
+            la.locked_until FROM staff st
+            LEFT JOIN attempts la ON la.staff_id=st.id
             ORDER BY st.id""").fetchall()
     return [{"id":x["id"],"name":x["name"],"role":x["role"],"active":x["active"],
              "loginLocked":bool(x["login_locked"]),
