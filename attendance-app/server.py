@@ -176,6 +176,8 @@ def archive_after_save():
 async def admin_archive_status(request:Request):
     actor=user_for(request);only_admin(actor)
     with connect() as connection:
+        queue_existing(connection)
+        connection.commit()
         return archive_stats(connection)
 
 
