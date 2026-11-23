@@ -56,6 +56,12 @@ def init_database():
         c.execute("""CREATE TABLE IF NOT EXISTS sessions(
             token_hash TEXT PRIMARY KEY, staff_id TEXT NOT NULL REFERENCES staff(id),
             expires_at TIMESTAMPTZ NOT NULL)""")
+        c.execute("""CREATE TABLE IF NOT EXISTS backup_download_links(
+            token_hash TEXT PRIMARY KEY,
+            created_by TEXT NOT NULL REFERENCES staff(id),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            expires_at TIMESTAMPTZ NOT NULL,
+            used_at TIMESTAMPTZ)""")
         c.execute("""CREATE TABLE IF NOT EXISTS attempts(
             staff_id TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0,
             locked_until TIMESTAMPTZ, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())""")
@@ -206,14 +212,61 @@ async def admin_sync_archive(request:Request):
     return result
 
 
+def _backup_response(data):
+    return Response(content=data, media_type="application/zip", headers={
+       "Content-Disposition":"attachment; filename=EDII_Attendance_Full_Backup_"+today().isoformat()+".zip",
+       "Cache-Control":"no-store",
+       "Pragma":"no-cache",
+       "X-Content-Type-Options":"nosniff",
+       "Referrer-Policy":"no-referrer",
+    })
+
+
 @app.get("/apiAdminExport")
 def admin_export(request:Request):
     actor=user_for(request);only_admin(actor)
     with connect() as connection:
         data=zip_backup(connection)
-    return Response(content=data,media_type="application/zip",headers={
-       "Content-Disposition":"attachment; filename=EDII_Attendance_Full_Backup_"+today().isoformat()+".zip"
-    })
+    return _backup_response(data)
+
+
+@app.post("/apiAdminCreateBackupLink")
+async def create_backup_link(request:Request):
+    """An administrator creates a single-use private link valid for 10 minutes.
+    The link is not tied to cookies, so it works in browsers that separate sessions.
+    """
+    actor=user_for(request);only_admin(actor)
+    token=secrets.token_urlsafe(42)
+    token_digest=hashlib.sha256(token.encode("ascii")).hexdigest()
+    with connect() as connection:
+        connection.execute("""INSERT INTO backup_download_links(token_hash,created_by,expires_at)
+             VALUES(%s,%s,%s)""", (token_digest,actor["id"],
+                                  datetime.now(timezone.utc)+timedelta(minutes=10)))
+        add_audit(connection,actor["id"],"CREATE_BACKUP_LINK",actor["id"],
+                  "Single use backup download link created with 10 minute expiry")
+    return {"url":"/apiDownloadBackup?token="+token,"expiresInMinutes":10,
+            "message":"Private download link created. It works once and expires in 10 minutes."}
+
+
+@app.get("/apiDownloadBackup")
+def download_backup(token:str=""):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{40,120}",token):
+        raise HTTPException(400,"Invalid backup download link. Generate a new link from Admin Dashboard.")
+    token_hash=hashlib.sha256(token.encode("ascii")).hexdigest()
+    with connect() as connection:
+        row=connection.execute("""UPDATE backup_download_links SET used_at=NOW()
+            WHERE token_hash=%s AND used_at IS NULL AND expires_at>NOW()
+            RETURNING created_by""",(token_hash,)).fetchone()
+        if not row:
+            raise HTTPException(410,"This private backup link expired or was already used. Generate a new one.")
+        actor=connection.execute("""SELECT active,role FROM staff WHERE id=%s""",
+                                 (row["created_by"],)).fetchone()
+        if not actor or not actor["active"] or actor["role"]!="ADMIN":
+            raise HTTPException(403,"This backup link is no longer authorised.")
+        add_audit(connection,row["created_by"],"DOWNLOAD_FULL_BACKUP",row["created_by"],
+                  "Private backup requested from a single use link")
+        data=zip_backup(connection)
+    return _backup_response(data)
 
 
 @app.post("/apiLogin")
