@@ -12,7 +12,7 @@
  <div class="row space"><h2 class="section-title">Admin Dashboard</h2><button class="btn secondary" id="refreshDashboard">Refresh</button></div>
  <p class="hint">Only administrators can view attendance across employees.</p>
  <div class="stats" id="dashboardStats"></div>
- <div class="row" style="margin:12px 0"><button class="btn" id="quickAddEmployee">Add Employee</button><a class="btn secondary" href="https://docs.google.com/spreadsheets/d/1QYp9HrV40gciL8QpKeNb3U1Xdk0KDNOJXdnFVQPH9xE/edit" target="_blank" rel="noopener noreferrer">Google Master Sheet</a></div>
+ <div class="row" style="margin:12px 0"><button class="btn" id="quickAddEmployee">Add Employee</button><button class="btn secondary" id="downloadMaster">Export Employee Master CSV</button><a class="btn secondary" href="https://docs.google.com/spreadsheets/d/1QYp9HrV40gciL8QpKeNb3U1Xdk0KDNOJXdnFVQPH9xE/edit" target="_blank" rel="noopener noreferrer">Google Master Sheet</a></div>
  <div class="notice warn">Google Sheet reports are prepared but automatic synchronisation is not yet connected. The live admin dashboard displays current cloud database records.</div>
  <h3>Today's staff attendance</h3><div id="dashboardTable" class="tablewrap"></div>
 </div>
@@ -83,6 +83,16 @@ async function loadDashboard(){
  }catch(e){$('dashboardTable').innerHTML='<div class="empty">'+escapeHTML(e.message)+'</div>';}
 }
 $('refreshDashboard').onclick=loadDashboard;
+$('downloadMaster').onclick=async()=>{try{
+ const staff=await call('apiStaffList');
+ const cols=['Staff ID / Login','Employee Name','Designation','Access Role','Status','Date Added','Last Updated','Assigned Centre','Remarks'];
+ const quote=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
+ const data=[cols,...staff.map(p=>[p.id,p.name,'',p.role,p.active?'Active':'Inactive','','','','Export from live attendance database'])];
+ const csv=data.map(row=>row.map(quote).join(',')).join('\r\n');
+ const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download='EDII_Employee_Master.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ }catch(e){alert(e.message);}
+};
 $('quickAddEmployee').onclick=()=>{setView('manageView');clearStaffForm();};
 document.addEventListener('click',e=>{let el=e.target.closest('.staff-detail');if(el){$('filterStaff').value=el.dataset.id;setView('allView');}});
 async function loadStaff(){if(user.role!=='ADMIN')return;try{staffList=await call('apiStaffList');$('staffTable').innerHTML=dataTable(['Staff ID','Name','Role','Status','Actions'],staffList.map(p=>[escapeHTML(p.id),escapeHTML(p.name),escapeHTML(p.role),`<span class="pill ${p.active?'':'inactive'}">${p.active?'Active':'Inactive'}</span>`,`<button class="btn secondary edit-staff" data-id="${escapeHTML(p.id)}">Edit</button> ${p.active&&p.id!==user.id?`<button class="btn danger disable-staff" data-id="${escapeHTML(p.id)}">Deactivate</button>`:''}`]));}catch(e){$('staffMessage').textContent=e.message;}}
