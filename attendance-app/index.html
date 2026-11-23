@@ -13,7 +13,7 @@
  <p class="hint">Only administrators can view attendance across employees.</p>
  <div class="stats" id="dashboardStats"></div>
  <div class="row" style="margin:12px 0"><button class="btn" id="quickAddEmployee">Add Employee</button><button class="btn secondary" id="downloadMaster">Export Employee Master CSV</button><a class="btn secondary" href="https://docs.google.com/spreadsheets/d/1QYp9HrV40gciL8QpKeNb3U1Xdk0KDNOJXdnFVQPH9xE/edit" target="_blank" rel="noopener noreferrer">Google Master Sheet</a></div>
- <div class="notice warn">Google Sheet reports are prepared but automatic synchronisation is not yet connected. The live admin dashboard displays current cloud database records.</div>
+ <div class="notice warn">Google Sheet reports are prepared but automatic synchronisation is not yet connected. The live admin dashboard displays current cloud database records. An unmarked check in means no morning selfie has been submitted, not that the employee login is disabled.</div>
  <h3>Today's staff attendance</h3><div id="dashboardTable" class="tablewrap"></div>
 </div>
 <div id="historyView" class="card hidden"><div class="row space"><h2 class="section-title">My Attendance History</h2><button class="btn secondary" id="refreshHistory">Refresh</button></div><div class="stats"><div class="stat"><strong id="presentDays">0</strong><span>Days checked in</span></div><div class="stat"><strong id="completedDays">0</strong><span>Days submitted</span></div><div class="stat"><strong id="incompleteDays">0</strong><span>Days pending</span></div></div><div id="myAttendance" class="tablewrap"></div></div>
@@ -119,12 +119,12 @@ async function loadDashboard(){
  if(!user||user.role!=='ADMIN')return;
  try{
   const [staff,all]=await Promise.all([call('apiStaffList'),call('apiList')]);
-  const date=todayIST(),active=staff.filter(p=>p.active);
+  const date=todayIST(),active=staff.filter(p=>p.active&&p.role==='STAFF'),activeAdmins=staff.filter(p=>p.active&&p.role==='ADMIN');
   const rec=active.map(p=>{const a=all.filter(r=>r.staffId===p.id&&r.date===date);return {...p,actions:Object.fromEntries(a.map(r=>[r.action,r]))};});
   const c=action=>rec.filter(p=>p.actions[action]).length;
-  const stats=[['Active Staff',active.length],['Morning Check Ins',c('IN')],['Saved Work Plans',c('PLAN')],['Evening Check Outs',c('OUT')],['Completed Days',c('SUBMITTED')]];
+  const stats=[['Active Employees',active.length],['Active Admin Accounts',activeAdmins.length],['Morning Check Ins',c('IN')],['Saved Work Plans',c('PLAN')],['Evening Check Outs',c('OUT')],['Completed Days',c('SUBMITTED')]];
   $('dashboardStats').innerHTML=stats.map(v=>'<div class="stat"><strong>'+v[1]+'</strong><span>'+escapeHTML(v[0])+'</span></div>').join('');
-  const time=r=>r?escapeHTML(clockIST(r.time)):'Pending';
+  const time=r=>r?escapeHTML(clockIST(r.time)):'Not marked';
   $('dashboardTable').innerHTML=dataTable(['Sl No','Employee ID','Employee','Login','Work Plan','Logged Out','Status','Details'],rec.map((p,i)=>[String(i+1),escapeHTML(p.id),escapeHTML(p.name),time(p.actions.IN),p.actions.PLAN?'Updated':'Not saved',time(p.actions.OUT),p.actions.SUBMITTED?'Submitted':p.actions.IN?'In progress':'Not recorded','<button class="btn secondary staff-detail" data-id="'+escapeHTML(p.id)+'">View Records</button>']));
  }catch(e){$('dashboardTable').innerHTML='<div class="empty">'+escapeHTML(e.message)+'</div>';}
 }
