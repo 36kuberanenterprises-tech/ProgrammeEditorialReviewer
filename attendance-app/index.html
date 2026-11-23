@@ -21,7 +21,7 @@
    <button class="btn secondary" id="archiveStatusBtn">Refresh Status</button>
    <button class="btn secondary" id="archiveTestBtn">Test Google Connection</button>
    <button class="btn" id="archiveSyncBtn">Sync Previous Records</button>
-   <button class="btn secondary" id="archiveDownloadBtn" type="button">Download Full Backup ZIP</button>
+   <button class="btn secondary" id="archiveDownloadBtn" type="button">Generate Private Backup Link</button><a id="privateBackupDownload" class="btn hidden" href="#" rel="noreferrer">Download Backup ZIP Now</a>
   </div>
   <p id="archiveStatusDetail" class="hint" role="status"></p>
   <details style="margin-top:12px"><summary style="font-weight:650;cursor:pointer;">One time Google activation instructions</summary>
@@ -158,31 +158,26 @@ async function fetchArchiveStatus(){
 }
 async function downloadFullAttendanceBackup(){
  const button=$('archiveDownloadBtn');
+ const download=$('privateBackupDownload');
  const output=$('archiveStatusDetail');
- if(!user||user.role!=='ADMIN'){output.textContent='Please sign in as an administrator to download this confidential backup.';return;}
- button.disabled=true;button.textContent='Preparing backup...';
- output.textContent='Preparing confidential staff attendance ZIP. Keep this page open until the download begins.';
+ if(!user||user.role!=='ADMIN'){output.textContent='Log in as administrator to generate the private backup link.';return;}
+ button.disabled=true;button.textContent='Generating link...';
+ download.classList.add('hidden');download.removeAttribute('href');
  try{
-   const response=await fetch('/apiAdminExport',{method:'GET',credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/zip'}});
-   if(!response.ok){
-     let detail='Backup could not be downloaded (HTTP '+response.status+').';
-     try{const parsed=await response.json();detail=parsed.detail||parsed.error||detail;}catch(_){}
-     if(response.status===401||response.status===403)detail+=' Please sign in with an active administrator account on this same website and retry.';
-     throw Error(detail);
-   }
-   const archive=await response.blob();
-   if(archive.size<100||!archive.type.includes('zip'))throw Error('The server did not return a valid ZIP backup. Please retry.');
-   const objectUrl=URL.createObjectURL(archive);
-   const a=document.createElement('a');
-   a.href=objectUrl;a.download='EDII_Attendance_Full_Backup_'+todayIST()+'.zip';
-   a.style.display='none';document.body.appendChild(a);a.click();a.remove();
-   setTimeout(()=>URL.revokeObjectURL(objectUrl),60000);
-   output.textContent='Backup download requested ('+(archive.size/1048576).toFixed(2)+' MB). Check the Downloads folder. Keep this ZIP private.';
+   const r=await call('apiAdminCreateBackupLink');
+   if(!r.url||!r.url.startsWith('/apiDownloadBackup?token='))throw Error('Server did not return a private backup link.');
+   download.href=r.url;download.classList.remove('hidden');
+   button.textContent='Generate Another Link';
+   output.textContent='Private backup link created. Click Download Backup ZIP Now. It works once and expires in 10 minutes. Do not forward this link to employees.';
  }catch(e){
-   output.textContent='Backup not downloaded: '+e.message+' You can also check the Render service logs under your administrator account.';
- }finally{button.disabled=false;button.textContent='Download Full Backup ZIP';}
+   output.textContent='Cannot generate backup link: '+e.message+'. Confirm you are logged in as ADMIN001 in this tab.';
+   button.textContent='Generate Private Backup Link';
+ }finally{button.disabled=false;}
 }
 $('archiveDownloadBtn').onclick=downloadFullAttendanceBackup;
+$('privateBackupDownload').onclick=()=>{
+  $('archiveStatusDetail').textContent='Downloading the confidential backup. Check your browser Downloads folder. This private link can be used only once.';
+};
 $('archiveStatusBtn').onclick=fetchArchiveStatus;
 $('archiveTestBtn').onclick=async()=>{
  const btn=$('archiveTestBtn');btn.disabled=true;
