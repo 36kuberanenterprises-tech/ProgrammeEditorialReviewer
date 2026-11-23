@@ -389,8 +389,15 @@ async def get_photo(request:Request):
 async def staff_list(request:Request):
     u=user_for(request);only_admin(u)
     with connect() as c:
-        r=c.execute("SELECT id,name,role,active FROM staff ORDER BY id").fetchall()
-    return r
+        rows=c.execute("""SELECT st.id,st.name,st.role,st.active,
+            (at.locked_until IS NOT NULL AND at.locked_until>NOW()) AS login_locked,
+            at.locked_until FROM staff st
+            LEFT JOIN attempts at ON at.staff_id=st.id
+            ORDER BY st.id""").fetchall()
+    return [{"id":x["id"],"name":x["name"],"role":x["role"],"active":x["active"],
+             "loginLocked":bool(x["login_locked"]),
+             "lockedUntil":iso(x["locked_until"]) if x["login_locked"] else None}
+            for x in rows]
 
 @app.post("/apiStaffSave")
 async def save_staff(request:Request):
@@ -418,14 +425,29 @@ async def save_staff(request:Request):
                 c.execute("UPDATE staff SET name=%s,role=%s,active=TRUE,salt=%s,pin_hash=%s,updated_at=NOW(),updated_by=%s WHERE id=%s",
                           (name,role,salt,digest,u["id"],sid))
                 c.execute("DELETE FROM sessions WHERE staff_id=%s",(sid,))
+                c.execute("DELETE FROM attempts WHERE staff_id=%s",(sid,))
             else:
                 c.execute("UPDATE staff SET name=%s,role=%s,active=TRUE,updated_at=NOW(),updated_by=%s WHERE id=%s",
                           (name,role,u["id"],sid))
         else:
             c.execute("INSERT INTO staff(id,name,role,salt,pin_hash,updated_by) VALUES(%s,%s,%s,%s,%s,%s)",
                       (sid,name,role,salt,digest,u["id"]))
-        add_audit(c,u["id"],"UPDATE_STAFF" if exists else "ADD_STAFF",sid,"Role "+role)
+        add_audit(c,u["id"],"RESET_STAFF_PIN" if (exists and newpin) else ("UPDATE_STAFF" if exists else "ADD_STAFF"),sid,"Role "+role)
+    return {"ok":True,"pinReset":bool(exists and newpin),"loginUnlocked":bool(newpin)}
+
+@app.post("/apiStaffUnlock")
+async def unlock_staff(request:Request):
+    actor=user_for(request);only_admin(actor)
+    payload=await request.json()
+    staff_id=clean_id(payload.get("staffId"))
+    with connect() as c:
+        row=c.execute("SELECT id,active FROM staff WHERE id=%s",(staff_id,)).fetchone()
+        if not row or not row["active"]:
+            raise HTTPException(404,"Active employee not found")
+        c.execute("DELETE FROM attempts WHERE staff_id=%s",(staff_id,))
+        add_audit(c,actor["id"],"UNLOCK_STAFF_LOGIN",staff_id,"Temporary login lock cleared")
     return {"ok":True}
+
 
 @app.post("/apiStaffDeactivate")
 async def deactivate(request:Request):
