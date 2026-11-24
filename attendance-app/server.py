@@ -345,13 +345,15 @@ def parse_geo(data):
         lat=float(data.get("latitude"));lon=float(data.get("longitude"));acc=float(data.get("accuracy"))
     except Exception:
         raise HTTPException(400,"Please capture accurate GPS location")
-    if not (-90<=lat<=90 and -180<=lon<=180 and 0<=acc<=1000):
-        raise HTTPException(400,"GPS location is invalid or accuracy exceeds 1000 metres")
+    if not (-90<=lat<=90 and -180<=lon<=180 and 0<=acc<=500):
+        raise HTTPException(400,"GPS accuracy exceeds 500 metres. Enable precise location and capture again.")
     gps=parse_date(data.get("gpsAt"))
     photographed=parse_date(data.get("capturedAt"))
+    if abs((gps-photographed).total_seconds())>45:
+        raise HTTPException(400,"GPS position is not from the time of this selfie. Capture a new live photo.")
     return lat,lon,acc,gps,photographed
 
-def stamp_photo(data,staff,action,place,lat,lon,acc):
+def stamp_photo(data,staff,action,place,lat,lon,acc,photographed,gps):
     m=re.fullmatch(r"data:image/jpeg;base64,([A-Za-z0-9+/=]+)",str(data or ""))
     if not m or len(data)>3000000:
         raise HTTPException(400,"Take a fresh JPEG selfie under 2 MB")
@@ -375,9 +377,11 @@ def stamp_photo(data,staff,action,place,lat,lon,acc):
         lines=[
             "EDII STAFF ATTENDANCE | "+("MORNING CHECK IN" if action=="IN" else "EVENING CHECK OUT"),
             staff["id"]+" | "+staff["name"][:40],
-            "Server time IST: "+now_ist().strftime("%d/%m/%Y %I:%M:%S %p"),
-            "Device GPS: %.6f, %.6f | Accuracy: %.0f m"%(lat,lon,acc),
-            "Work location: "+place[:70],
+            "Live selfie captured IST: "+photographed.astimezone(TZ).strftime("%d/%m/%Y %I:%M:%S %p"),
+            "Device GPS coordinates: %.6f, %.6f"%(lat,lon),
+            "GPS fix IST: "+gps.astimezone(TZ).strftime("%d/%m/%Y %I:%M:%S %p")+" | +/- %.0f m"%(acc),
+            "Place / centre: "+place[:65],
+            "Saved on server IST: "+now_ist().strftime("%d/%m/%Y %I:%M:%S %p"),
         ]
         lh=font_size+6
         bar=min(h,lh*len(lines)+20)
@@ -406,7 +410,7 @@ async def attendance(request:Request):
         raise HTTPException(400,"Enter the work location")
     remarks=str(r.get("remarks") or "").strip()[:250]
     lat,lon,acc,gps,capture=parse_geo(r)
-    photo=stamp_photo(r.get("photoData"),u,action,location,lat,lon,acc)
+    photo=stamp_photo(r.get("photoData"),u,action,location,lat,lon,acc,capture,gps)
     date=today()
     with connect() as c:
         existing=c.execute("SELECT action FROM attendance WHERE staff_id=%s AND day=%s FOR UPDATE",(u["id"],date)).fetchall()
