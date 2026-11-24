@@ -7,7 +7,7 @@
 <main class="container">
 <section id="loginScreen" class="login-wrap card"><h1>Staff Login</h1><p class="muted">Access your own attendance and work plan.</p><div class="notice">Secure staff login. Employees can view only their own attendance and work plans.</div><label class="field">Staff ID<input id="loginId" placeholder="Enter your Staff ID" autocomplete="username" autocapitalize="characters" maxlength="30"></label><label class="field">Six digit PIN<input id="loginPin" placeholder="Enter your PIN" type="password" inputmode="numeric" autocomplete="current-password" maxlength="6"></label><button class="btn full" id="loginBtn">Login</button><p class="hint">Use the Staff ID and PIN provided by your administrator. Staff IDs listed in the Google Master Sheet are not active until the administrator creates them under Manage Employees.</p><p id="loginError" class="notice warn hidden" role="alert"></p></section>
 <section id="appScreen" class="hidden"><div class="row space"><div><h1 class="page-title" id="welcome">My Attendance</h1><div class="muted" id="todayDate"></div></div><span class="secure">Private staff account</span></div><nav id="tabs" class="tabs" aria-label="Main navigation"></nav>
-<div id="attendanceView" class="card hidden"><div class="row space"><h2 class="section-title">Daily Attendance</h2><span class="pill" id="dayPill"></span></div><div id="steps" class="stepper"></div><h3 id="formTitle"></h3><p id="instruction" class="hint"></p><div id="savedPlanBanner" class="notice hidden" style="white-space:pre-wrap"></div><div id="photoFields" class="hidden"><div class="grid2"><label class="field">Work location / centre<input id="workLocation" maxlength="120" placeholder="Office, training centre or field location"></label><label class="field">Remarks (optional)<input id="remarks" maxlength="250" placeholder="Any relevant remark"></label></div><div class="camera-wrap"><div id="cameraPlaceholder" class="hint">Take a fresh selfie. GPS, date, time and work location will be printed directly on the photograph.</div><video id="cameraVideo" playsinline autoplay muted class="hidden"></video><img id="photoPreview" alt="Your GPS stamped attendance selfie" class="hidden"><div class="row selfie-actions" id="cameraButtons"><button class="btn" id="startCameraBtn">Open front camera</button></div><div class="row selfie-actions hidden" id="captureButtons"><button class="btn" id="capturePhotoBtn">Capture selfie with GPS</button><button class="btn secondary" id="cancelCameraBtn">Cancel</button></div><div id="geoInfo" class="hint"></div></div></div><div id="planFields" class="hidden"><label class="field">Today's work plan<textarea id="planText" maxlength="2000" placeholder="Enter activities planned for today"></textarea></label></div><div id="submitFields" class="notice hidden">Your morning selfie, work plan and evening selfie are recorded. Submit to complete the day.</div><div class="row" style="margin-top:17px"><button class="btn" id="submitBtn">Continue</button><button class="btn secondary" id="refreshBtn">Refresh</button></div><div class="status" id="status" role="status" aria-live="polite"></div></div>
+<div id="attendanceView" class="card hidden"><div class="row space"><h2 class="section-title">Daily Attendance</h2><span class="pill" id="dayPill"></span></div><div id="steps" class="stepper"></div><h3 id="formTitle"></h3><p id="instruction" class="hint"></p><div id="savedPlanBanner" class="notice hidden" style="white-space:pre-wrap"></div><div id="photoFields" class="hidden"><div class="grid2"><label class="field">Work location / centre (optional)<input id="workLocation" maxlength="120" placeholder="Office or training centre (GPS coordinates captured automatically)"></label><label class="field">Remarks (optional)<input id="remarks" maxlength="250" placeholder="Any relevant remark"></label></div><div class="camera-wrap"><div id="cameraPlaceholder" class="hint">Tap Open front camera, then Capture selfie with GPS. The live camera image is frozen immediately, and current GPS coordinates, accuracy and time are printed on the photo. Allow camera and precise location access.</div><video id="cameraVideo" playsinline autoplay muted class="hidden"></video><img id="photoPreview" alt="Your GPS stamped attendance selfie" class="hidden"><div class="row selfie-actions" id="cameraButtons"><button class="btn" id="startCameraBtn">Open front camera</button></div><div class="row selfie-actions hidden" id="captureButtons"><button class="btn" id="capturePhotoBtn">Capture selfie with GPS</button><button class="btn secondary" id="cancelCameraBtn">Cancel</button></div><div id="geoInfo" class="hint"></div><a id="geoMapLink" class="hidden" target="_blank" rel="noopener noreferrer">View captured location on Google Maps</a></div></div><div id="planFields" class="hidden"><label class="field">Today's work plan<textarea id="planText" maxlength="2000" placeholder="Enter activities planned for today"></textarea></label></div><div id="submitFields" class="notice hidden">Your morning selfie, work plan and evening selfie are recorded. Submit to complete the day.</div><div class="row" style="margin-top:17px"><button class="btn" id="submitBtn">Continue</button><button class="btn secondary" id="refreshBtn">Refresh</button></div><div class="status" id="status" role="status" aria-live="polite"></div></div>
 <div id="dashboardView" class="card hidden">
  <div class="row space"><h2 class="section-title">Admin Dashboard</h2><button class="btn secondary" id="refreshDashboard">Refresh</button></div>
  <p class="hint">Only administrators can view attendance across employees.</p>
@@ -64,7 +64,7 @@ async function call(name,req={}) {
 function status(message,isError=false){const el=$('status');el.textContent=message;el.className='status'+(isError?' error':'');}
 function setWorking(val){working=val;const locked=step===2&&!eveningAllowed();$('submitBtn').disabled=val||step>=4||locked;$('refreshBtn').disabled=val;$('startCameraBtn').disabled=val||locked;$('capturePhotoBtn').disabled=val||locked;}
 function stopCamera(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;}$('cameraVideo').srcObject=null;$('cameraVideo').classList.add('hidden');$('captureButtons').classList.add('hidden');$('cameraButtons').classList.remove('hidden');}
-function resetPhoto(){stopCamera();stampedPhoto=null;$('photoPreview').src='';$('photoPreview').classList.add('hidden');$('cameraPlaceholder').classList.remove('hidden');$('geoInfo').textContent='';}
+function resetPhoto(){stopCamera();stampedPhoto=null;$('photoPreview').src='';$('photoPreview').classList.add('hidden');$('cameraPlaceholder').classList.remove('hidden');$('geoInfo').textContent='';$('geoMapLink').removeAttribute('href');$('geoMapLink').classList.add('hidden');}
 function stage(items){const actions=items.map(r=>r.action);if(!actions.includes('IN'))return 0;if(!actions.includes('PLAN'))return 1;if(!actions.includes('OUT'))return 2;if(!actions.includes('SUBMITTED'))return 3;return 4;}
 function renderAttendance(){step=stage(dayRecords);const names=['Morning Selfie','Today’s Work Plan','Evening Selfie','Submit Day'];const descriptions=['Check in with GPS','Activities planned','Check out with GPS','Complete attendance'];$('steps').innerHTML=names.map((n,i)=>`<div class="step ${i<step?'done':i===step?'current':''}"><span class="n">${i<step?'✓':i+1}</span><b>${n}</b><span>${descriptions[i]}</span></div>`).join('');$('dayPill').textContent=step===4?'Completed':`Step ${step+1} of 4`;$('formTitle').textContent=names[step]||'Attendance completed';$('instruction').textContent=['Take a live morning selfie. Your date, time, GPS coordinates and work location will appear on the photograph.','Write today’s activities and save the work plan. The evening selfie unlocks after 5:00 PM IST.','Take an evening selfie after 5:00 PM IST. Fresh GPS coordinates, date, time and work location will be printed on the photograph.','Review and complete your daily attendance.','Today’s attendance has been submitted successfully.'][step];const locked=step===2&&!eveningAllowed();lastEveningGate=eveningAllowed();const saved=dayRecords.find(x=>x.action==='PLAN');$('savedPlanBanner').classList.toggle('hidden',step<2||!saved);if(saved)$('savedPlanBanner').textContent='Today’s work plan saved'+(saved.time?' at '+humanIST(saved.time):'')+'\n'+(saved.plan||'');$('photoFields').classList.toggle('hidden',![0,2].includes(step)||locked);$('planFields').classList.toggle('hidden',step!==1);$('submitFields').classList.toggle('hidden',step!==3);$('submitBtn').textContent=['Submit Check In','Save Work Plan','Submit Check Out','Submit Day','Completed'][step];$('submitBtn').disabled=step===4;resetPhoto();status(step===4?'Attendance completed. You can review your history below.':locked?'Morning selfie and today’s work plan are saved. Evening selfie opens at 5:00 PM IST. You cannot check out before 5:00 PM.':step===2?'It is after 5:00 PM IST. You may take and submit your evening GPS selfie now.':'Complete this step to proceed.');setWorking(false);}
 async function refreshDay(){const d=await call('apiDay');dayDate=d.date;dayRecords=d.records||[];$('todayDate').textContent=dayDate+' | '+user.name+' ('+user.id+')';renderAttendance();}
@@ -73,13 +73,122 @@ function startApp(){ $('loginScreen').classList.add('hidden');$('appScreen').cla
 async function signin(){try{$('loginError').classList.add('hidden');$('loginError').textContent='';$('loginBtn').disabled=true;let r=await call('apiLogin',{staffId:$('loginId').value.trim().toUpperCase(),pin:$('loginPin').value});user=r.user;$('loginPin').value='';startApp();}catch(e){$('loginError').textContent=e.message+' If your ID is listed only in the Master Sheet, ask the administrator to create your account and set your individual PIN.';$('loginError').classList.remove('hidden');}finally{$('loginBtn').disabled=false;}}
 $('loginBtn').onclick=signin;$('loginPin').addEventListener('keydown',e=>{if(e.key==='Enter')signin()});
 $('logoutBtn').onclick=async()=>{try{await call('apiLogout')}catch(e){}token='';user=null;stopCamera();location.reload();};
-function geo(){return new Promise((resolve,reject)=>{if(!navigator.geolocation){reject(Error('GPS not available. Open the deployed HTTPS attendance website in Chrome.'));return}navigator.geolocation.getCurrentPosition(pos=>resolve({latitude:pos.coords.latitude,longitude:pos.coords.longitude,accuracy:pos.coords.accuracy,gpsAt:new Date(pos.timestamp||Date.now()).toISOString()}),error=>reject(Error('Could not capture GPS: '+error.message+'. Enable precise location and allow location access in Chrome.')),{enableHighAccuracy:true,maximumAge:0,timeout:25000});});}
-function chosenLocation(){const v=$('workLocation').value.trim();if(!v)throw Error('Enter work location or centre before taking selfie');return v;}
-async function openCamera(){try{if(step===2&&!eveningAllowed())throw Error('Evening selfie opens at 5:00 PM IST.');chosenLocation();if(!navigator.mediaDevices?.getUserMedia)throw Error('Live camera unavailable here. Use the phone camera option on HTTPS.');status('Opening front camera...');stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}}});$('cameraVideo').srcObject=stream;$('cameraVideo').classList.remove('hidden');$('cameraPlaceholder').classList.add('hidden');$('photoPreview').classList.add('hidden');$('cameraButtons').classList.add('hidden');$('captureButtons').classList.remove('hidden');status('Camera ready. Tap Capture selfie with GPS.');}catch(e){stopCamera();status(e.message,true);}}
-$('startCameraBtn').onclick=openCamera;$('cancelCameraBtn').onclick=()=>{stopCamera();status('Camera closed.');};
-function stampCanvas(image,geoData,place){const max=1024,sw=image.videoWidth||image.naturalWidth||image.width,sh=image.videoHeight||image.naturalHeight||image.height;if(!sw||!sh)throw Error('Camera did not return an image');const factor=Math.min(1,max/Math.max(sw,sh)),w=Math.floor(sw*factor),h=Math.floor(sh*factor);const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const c=canvas.getContext('2d');c.drawImage(image,0,0,w,h);const margin=Math.max(9,Math.round(w*.015)),fs=Math.max(12,Math.round(w*.019)),lines=[`EDII ATTENDANCE | ${step===0?'MORNING CHECK IN':'EVENING CHECK OUT'}`,`${user.name} | ${user.id}`,`Date / Time: ${humanIST(geoData.capturedAt)}`,`GPS: ${geoData.latitude.toFixed(6)}, ${geoData.longitude.toFixed(6)}  |  Accuracy: ±${Math.round(geoData.accuracy)}m`,`Location: ${place.slice(0,65)}`];c.font=`bold ${fs}px Arial`;const lineHeight=Math.ceil(fs*1.34),barHeight=lines.length*lineHeight+margin*2;c.fillStyle='rgba(8,30,43,.86)';c.fillRect(0,Math.max(0,h-barHeight),w,Math.min(barHeight,h));c.fillStyle='#ffffff';c.textBaseline='top';lines.forEach((line,i)=>c.fillText(line,margin,Math.max(0,h-barHeight)+margin+i*lineHeight,w-margin*2));return canvas.toDataURL('image/jpeg',.72);}
-async function setStamped(image,place){if(step===2&&!eveningAllowed())throw Error('Evening selfie opens at 5:00 PM IST.');const g=await geo();const payload={...g,capturedAt:new Date().toISOString(),workLocation:place,action:step===0?'IN':'OUT'};const photoData=stampCanvas(image,payload,place);if(photoData.length>2900000)throw Error('Photo is too large. Retake it.');stampedPhoto={...payload,photoData};$('photoPreview').src=photoData;$('photoPreview').classList.remove('hidden');$('cameraPlaceholder').classList.add('hidden');$('geoInfo').textContent=`GPS captured: ${g.latitude.toFixed(6)}, ${g.longitude.toFixed(6)} | accuracy ±${Math.round(g.accuracy)}m | ${humanIST(payload.capturedAt)}`;status('GPS stamped photograph ready. Check the photo and submit.');}
-$('capturePhotoBtn').onclick=async()=>{try{let place=chosenLocation(),video=$('cameraVideo');if(!stream||video.readyState<2)throw Error('Camera is not ready');status('Capturing current GPS coordinates and stamping photo...');await setStamped(video,place);stopCamera();}catch(e){status(e.message,true);}};
+function geo(){
+ return new Promise((resolve,reject)=>{
+  if(!navigator.geolocation){
+   reject(Error('Live GPS is unavailable in this browser. Open the HTTPS attendance website in Chrome and enable location.'));return;
+  }
+  navigator.geolocation.getCurrentPosition(pos=>{
+   const latitude=Number(pos.coords.latitude),longitude=Number(pos.coords.longitude),accuracy=Number(pos.coords.accuracy);
+   const timestamp=Number(pos.timestamp)||Date.now();
+   if(!Number.isFinite(latitude)||!Number.isFinite(longitude)||!Number.isFinite(accuracy)||accuracy<0)
+    return reject(Error('GPS did not return valid coordinates. Please retry.'));
+   if(accuracy>500)
+    return reject(Error('Location accuracy is too low (±'+Math.round(accuracy)+'m). Move near an open area, enable Precise Location and retry.'));
+   if(Math.abs(Date.now()-timestamp)>30000)
+    return reject(Error('The GPS reading is not fresh. Please capture again with precise location enabled.'));
+   resolve({latitude,longitude,accuracy,gpsAt:new Date(timestamp).toISOString()});
+  },error=>{
+   let detail='Please enable precise location in the device and allow Location access for this website.';
+   if(error.code===1)detail='Location permission denied. In Chrome, open site settings, allow Location and enable Precise Location in your phone settings.';
+   else if(error.code===2)detail='Current GPS position unavailable. Move to a place with a better GPS signal and retry.';
+   else if(error.code===3)detail='GPS request timed out. Enable device Location and retry in an open area.';
+   reject(Error(detail));
+  },{enableHighAccuracy:true,maximumAge:0,timeout:25000});
+ });
+}
+function chosenLocation(){return $('workLocation').value.trim();}
+async function openCamera(){
+ try{
+  if(step===2&&!eveningAllowed())throw Error('Evening selfie opens at 5:00 PM IST.');
+  if(!navigator.mediaDevices?.getUserMedia)throw Error('Live camera is unavailable. Use the HTTPS attendance website in Chrome.');
+  status('Opening live front camera. The location will be captured when you tap Capture Selfie with GPS...');
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'user',width:{ideal:1280},height:{ideal:960}}});
+  $('cameraVideo').srcObject=stream;
+  $('cameraVideo').classList.remove('hidden');
+  $('cameraPlaceholder').classList.add('hidden');
+  $('photoPreview').classList.add('hidden');
+  $('cameraButtons').classList.add('hidden');
+  $('captureButtons').classList.remove('hidden');
+  status('Camera ready. Tap Capture selfie with GPS. The photograph will capture the current frame and a fresh GPS position.');
+ }catch(e){stopCamera();status(e.message,true);}
+}
+$('startCameraBtn').onclick=openCamera;
+$('cancelCameraBtn').onclick=()=>{if(working)return;stopCamera();status('Camera closed.');};
+function freezeSelfieFrame(video){
+ const w=video.videoWidth,h=video.videoHeight;
+ if(!w||!h||video.readyState<2)throw Error('Live front camera is not ready. Try again.');
+ const canvas=document.createElement('canvas');
+ canvas.width=w;canvas.height=h;
+ const ctx=canvas.getContext('2d');
+ if(!ctx)throw Error('Could not capture camera frame. Retry in Chrome.');
+ // Match the mirrored front camera preview. Text is added after mirroring.
+ ctx.translate(w,0);ctx.scale(-1,1);ctx.drawImage(video,0,0,w,h);
+ return canvas;
+}
+function stampCanvas(image,geoData,place){
+ const max=1024,sw=image.videoWidth||image.naturalWidth||image.width,sh=image.videoHeight||image.naturalHeight||image.height;
+ if(!sw||!sh)throw Error('Camera did not return an image');
+ const factor=Math.min(1,max/Math.max(sw,sh)),w=Math.floor(sw*factor),h=Math.floor(sh*factor);
+ const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+ const c=canvas.getContext('2d');if(!c)throw Error('Could not prepare GPS stamped photograph');
+ c.drawImage(image,0,0,w,h);
+ const margin=Math.max(9,Math.round(w*.015)),fs=Math.max(12,Math.round(w*.019));
+ const lines=[
+  'EDII STAFF ATTENDANCE | '+(step===0?'MORNING CHECK IN':'EVENING CHECK OUT'),
+  user.name+' | '+user.id,
+  'Live selfie time IST: '+humanIST(geoData.capturedAt),
+  'Device GPS: '+geoData.latitude.toFixed(6)+', '+geoData.longitude.toFixed(6),
+  'GPS accuracy: ±'+Math.round(geoData.accuracy)+' metres | Place: '+place.slice(0,62)
+ ];
+ c.font='bold '+fs+'px Arial';
+ const lineHeight=Math.ceil(fs*1.34),barHeight=lines.length*lineHeight+margin*2;
+ c.fillStyle='rgba(8,30,43,.88)';
+ c.fillRect(0,Math.max(0,h-barHeight),w,Math.min(barHeight,h));
+ c.fillStyle='#ffffff';c.textBaseline='top';
+ lines.forEach((line,i)=>c.fillText(line,margin,Math.max(0,h-barHeight)+margin+i*lineHeight,w-margin*2));
+ return canvas.toDataURL('image/jpeg',.76);
+}
+async function setStamped(frozenFrame,manualPlace,capturedAt){
+ if(step===2&&!eveningAllowed())throw Error('Evening selfie opens at 5:00 PM IST.');
+ // A fresh high-accuracy device GPS fix is required for each live photo.
+ const g=await geo();
+ const gap=Math.abs(Date.parse(g.gpsAt)-Date.parse(capturedAt));
+ if(!Number.isFinite(gap)||gap>45000)
+  throw Error('GPS and selfie capture times are too far apart. Capture the selfie again.');
+ const place=manualPlace||'GPS '+g.latitude.toFixed(6)+', '+g.longitude.toFixed(6);
+ if(!manualPlace)$('workLocation').value=place;
+ const payload={...g,capturedAt,workLocation:place,action:step===0?'IN':'OUT'};
+ const photoData=stampCanvas(frozenFrame,payload,place);
+ if(photoData.length>2900000)throw Error('Selfie is too large. Retake the photograph.');
+ stampedPhoto={...payload,photoData};
+ $('photoPreview').src=photoData;
+ $('photoPreview').classList.remove('hidden');
+ $('cameraPlaceholder').classList.add('hidden');
+ const map='https://www.google.com/maps?q='+g.latitude.toFixed(7)+','+g.longitude.toFixed(7);
+ $('geoMapLink').href=map;$('geoMapLink').classList.remove('hidden');
+ $('geoInfo').textContent='Live device GPS: '+g.latitude.toFixed(6)+', '+g.longitude.toFixed(6)+
+   ' | accuracy ±'+Math.round(g.accuracy)+'m | photo captured '+humanIST(capturedAt)+
+   (g.accuracy>150?' | GPS accuracy is limited at this location.':'');
+ status('Live selfie saved with GPS coordinates and time printed on the photo. Review it and submit attendance.');
+}
+$('capturePhotoBtn').onclick=async()=>{
+ if(working)return;
+ let frame,place,capturedAt;
+ try{
+  const video=$('cameraVideo');
+  if(!stream||video.readyState<2)throw Error('Live camera is not ready.');
+  // Freeze the frame FIRST. Do not photograph a later frame after GPS acquisition.
+  place=chosenLocation();
+  frame=freezeSelfieFrame(video);
+  capturedAt=new Date().toISOString();
+  setWorking(true);
+  status('Selfie captured. Fetching a fresh GPS position and stamping the photograph...');
+  await setStamped(frame,place,capturedAt);
+  stopCamera();
+ }catch(e){stampedPhoto=null;status(e.message,true);}
+ finally{setWorking(false);}
+};
 $('submitBtn').onclick=async()=>{if(step>=4||working)return;if(step===2&&!eveningAllowed()){status('Evening selfie and checkout are available after 5:00 PM IST.',true);return;}setWorking(true);try{let result=null;if(step===0||step===2){if(!stampedPhoto)throw Error('Take a live GPS stamped selfie first');if(chosenLocation()!==stampedPhoto.workLocation)throw Error('Work location changed. Retake your selfie to update the stamp');if(Date.now()-new Date(stampedPhoto.capturedAt).getTime()>540000)throw Error('Selfie is more than 9 minutes old. Please retake it.');status('Saving attendance and stamped photograph...');result=await call('apiAttendance',{...stampedPhoto,remarks:$('remarks').value.trim()});}else if(step===1){let plan=$('planText').value.trim();if(plan.length<5)throw Error('Enter your work plan');result=await call('apiPlan',{plan});}else if(step===3)result=await call('apiSubmitDay');await refreshDay();$('planText').value='';$('workLocation').value='';$('remarks').value='';if(result?.archive){if(!result.archive.configured)status('Saved in the temporary database. Your Google archive still requires administrator activation.',true);else if(result.archive.pending>0)status('Saved in the database. '+result.archive.pending+' record(s) are queued for Google archive retry.',true);else status('Saved successfully. Google archive queue is clear.');}}catch(e){status(e.message,true);}finally{setWorking(false);}};
 $('refreshBtn').onclick=()=>refreshDay().catch(e=>status(e.message,true));
 function dataTable(headers,rows){if(!rows.length)return '<div class="empty">No records available.</div>';return `<table><thead><tr>${headers.map(h=>`<th>${escapeHTML(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${v??''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;}
